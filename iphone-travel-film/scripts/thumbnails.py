@@ -162,10 +162,22 @@ def route_dots(img, xy, width, light=True):
         tw = d.textlength(name, font=f)
         d.text((cx - tw / 2 + 2, y + 20 + 2), name, font=f, fill=(0, 0, 0, 160)); d.text((cx - tw / 2, y + 20), name, font=f, fill=col)
 
+def boxed_text(d, x, y, text, font, bg, fg, padx=None, pady=None, radius=0, center=False):
+    """Text on a box whose padding is measured from the real glyph outlines (equal on all sides), so the text is
+    optically centred. (x, y) = top-left of the box, or top-centre when center=True. Returns the box."""
+    l, t, r, b = d.textbbox((0, 0), text, font=font)
+    padx = font.size * 0.28 if padx is None else padx; pady = font.size * 0.16 if pady is None else pady
+    w, h = (r - l) + 2 * padx, (b - t) + 2 * pady
+    bx = x - w / 2 if center else x
+    box = (bx, y, bx + w, y + h)
+    if radius: d.rounded_rectangle(box, radius, fill=bg)
+    else: d.rectangle(box, fill=bg)
+    d.text((bx + padx - l, y + pady - t), text, font=font, fill=fg)
+    return box
+
 def second_line(d, x0, y2, w2, f2, bar=True):
     if bar and 'yellow_bar' in ACC:
-        tw = d.textlength(w2, font=f2); d.rectangle((x0 - 12, y2 + f2.size * 0.12, x0 + tw + 12, y2 + f2.size * 1.02), fill=YELLOW)
-        d.text((x0, y2), w2, font=f2, fill=(10, 10, 10))
+        boxed_text(d, x0 - f2.size * 0.28, y2 + f2.size * 0.08, w2, f2, YELLOW, (10, 10, 10))
     else:
         text_stroke(d, (x0, y2), w2, f2, fill=YELLOW, sw=7)
 
@@ -216,9 +228,7 @@ def style_cinematic(src, words, badge_text):
     if len(words) > 1:
         fs = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 64)
         if 'yellow_bar' in ACC:
-            tw = d.textlength(words[1].upper(), font=fs); y = TH * 0.70 + 22
-            d.rectangle((TW / 2 - tw / 2 - 16, y, TW / 2 + tw / 2 + 16, y + fs.size * 1.15), fill=YELLOW)
-            d.text((TW / 2, y + fs.size * 0.58), words[1].upper(), font=fs, fill=(10, 10, 10), anchor='mm')
+            boxed_text(d, TW / 2, TH * 0.70 + 22, words[1].upper(), fs, YELLOW, (10, 10, 10), center=True)
         else:
             shadow_text(img, (TW / 2, TH * 0.70 + 64), words[1].upper(), fs, fill=YELLOW, anchor='ms', blur=8)
     route_dots(img, (TW * 0.3, 70), TW * 0.4)
@@ -237,12 +247,12 @@ def style_collage(srcs, words, badge_text):
         if k: ImageDraw.Draw(img).line([(x0 + sk / 2, 0), (x0 - sk / 2, TH)], fill=(255, 255, 255), width=12)
     d = ImageDraw.Draw(img); w = words[0]
     f = fit_font(d, w, condensed, TW * 0.8, 190); tw = d.textlength(w, font=f)
-    bx0, by0 = (TW - tw) / 2 - 34, TH * 0.30
-    d.rounded_rectangle((bx0, by0, bx0 + tw + 68, by0 + f.size * 1.05), 18, fill=YELLOW if 'yellow_bar' in ACC else (15, 15, 18))
-    d.text((TW / 2, by0 + f.size * 0.53), w, font=f, fill=(10, 10, 10) if 'yellow_bar' in ACC else (255, 255, 255), anchor='mm')
+    by0 = TH * 0.30
+    yb = 'yellow_bar' in ACC
+    box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
     if len(words) > 1:
         f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 60)
-        text_stroke(d, (TW / 2, by0 + f.size * 1.05 + 50), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+        text_stroke(d, (TW / 2, box[3] + 30), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
@@ -262,12 +272,12 @@ def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190):
     """Centered headline on a yellow (or dark) rounded block + white second line. Used by the collages."""
     d = ImageDraw.Draw(img); w = words[0]; cy = TH * 0.42 if cy is None else cy
     f = fit_font(d, w, condensed, TW * max_w, size); tw = d.textlength(w, font=f)
-    by0 = cy - f.size * 0.55; yb = yellow and 'yellow_bar' in ACC
-    d.rounded_rectangle(((TW - tw) / 2 - 34, by0, (TW + tw) / 2 + 34, by0 + f.size * 1.05), 18, fill=YELLOW if yb else (15, 15, 18))
-    d.text((TW / 2, by0 + f.size * 0.53), w, font=f, fill=(10, 10, 10) if yb else (255, 255, 255), anchor='mm')
+    yb = yellow and 'yellow_bar' in ACC
+    l_, t_, r_, b_ = d.textbbox((0, 0), w, font=f); by0 = cy - ((b_ - t_) + 2 * f.size * 0.16) / 2
+    box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
     if len(words) > 1:
         f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.75, 58)
-        text_stroke(d, (TW / 2, by0 + f.size * 1.05 + 26), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+        text_stroke(d, (TW / 2, box[3] + 22), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
 
 def _panel(img, src, box, border=10):
     x0, y0, x1, y1 = [int(v) for v in box]
