@@ -145,5 +145,6 @@ if __name__ == '__main__':
     if CFG.get('sdr_preview', True):                      # optional: a 1080p SDR copy for checking on any screen
         from compose import preview
         preview(final, f"{W}/previews/{CFG.get('output_name', 'Travel_Film')}_preview_1080p_SDR.mp4")
+    if os.path.exists(f'{OUT}/joined.mov'): os.remove(f'{OUT}/joined.mov')   # intermediate, as big as the film
     print('DONE', final)
     subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'verify.py'), final])
