@@ -69,6 +69,21 @@ def subject_mask(img):
     m = np.frombuffer(raw, np.float32).reshape(hh, bpr // 4)[:, :w]
     return Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(img.size, Image.LANCZOS)
 
+def face_centered(img, aspect=1.0):
+    """Crop around the largest face (Apple Vision) so later panel crops keep the face. Returns img unchanged if none."""
+    import Vision
+    from Foundation import NSURL
+    tmp = P('tmp', 'thumb_face.jpg'); img.convert('RGB').save(tmp, quality=92)
+    h = Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(tmp), None)
+    rq = Vision.VNDetectFaceRectanglesRequest.alloc().init(); h.performRequests_error_([rq], None)
+    fs = rq.results() or []
+    if not fs: return img
+    b = max(fs, key=lambda o: o.boundingBox().size.width).boundingBox()
+    W_, H_ = img.size; cx = (b.origin.x + b.size.width / 2) * W_; cy = (1 - b.origin.y - b.size.height / 2) * H_
+    ch = min(H_, max(b.size.height * H_ * 2.6, H_ * 0.55)); cw = min(W_, ch * aspect)
+    x0 = min(max(0, cx - cw / 2), W_ - cw); y0 = min(max(0, cy - ch * 0.45), H_ - ch)
+    return img.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
+
 # ------------------------------------------------------------------ candidates
 def pick(n=16):
     V = jload('meta/vision.json', {}); E, edl = edl_shots()
@@ -332,6 +347,8 @@ def make(nums=None):
     """Render every text variant in every style. project.json:
       "thumbnail_styles": ["cinematic", "collage", "grid4", "split", "strips", "mosaic", "polaroid", "minimal", "pop"]
       "thumbnail_cutout": false     → no subject cut-out ('pop') — e.g. when the user doesn't want people highlighted
+      "thumbnail_face_frames": [N…] → candidate numbers showing the creator; they appear in ~"thumbnail_face_share"
+                                       (default 1/3) of the thumbnails — never all of them
     Frame order (candidate numbers): 1st = hero scenery; the rest feed the collages (more = more variety)."""
     cands = json.load(open(os.path.join(OUT, 'candidates.json')))
     nums = nums or [c['n'] for c in cands[:6]]
@@ -348,11 +365,24 @@ def make(nums=None):
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
     for f in glob.glob(os.path.join(OUT, 'thumb_*.jpg')): os.remove(f)
+    faces = [n for n in CFG.get('thumbnail_face_frames', []) if n in nums]   # frames showing the creator
+    scen = [n for n in nums if n not in faces]
+    fr = [big[n].resize((TW, TH), Image.LANCZOS) for n in scen]
+    ffr = {n: face_centered(big[n].resize((TW, TH), Image.LANCZOS), 0.9) for n in faces}   # face stays in narrow panels
+    share = float(CFG.get('thumbnail_face_share', 0.33)); fk = 0
     k = 0
     for v, words in enumerate(variants, 1):
-        for st in styles:
+        for si, st in enumerate(styles):
             r = fr[k % len(fr):] + fr[:k % len(fr)]; k += 1            # rotate frames so every thumbnail looks different
-            if st == 'pop': im = style_pop(big[nums[k % len(nums)]], words, btxt)
+            use_face = faces and ((k * share) % 1 + share > 1 - 1e-9 or st == 'pop')
+            if use_face:                                                 # creator's face in ~share of thumbnails:
+                fn_ = faces[fk % len(faces)]; fk += 1                    # hero for single-image styles, a panel in collages
+                full = big[fn_].resize((TW, TH), Image.LANCZOS)
+                r = [full] + r if st in ('cinematic', 'minimal', 'mosaic', 'split') else (
+                    [ffr[fn_]] + r if st in ('collage', 'strips') else r[:1] + [ffr[fn_]] + r[1:])
+            if st == 'pop':
+                if not use_face: continue                                # subject focus is only used on the creator
+                im = style_pop(big[fn_], words, btxt)
             elif st == 'cinematic': im = style_cinematic(r[0], words, btxt)
             elif st == 'minimal': im = style_minimal(r[0], words, btxt)
             elif st == 'collage': im = style_collage(r[:3], words, btxt)
