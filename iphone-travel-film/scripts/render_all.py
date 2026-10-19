@@ -73,12 +73,14 @@ def plan():
 
 def do(job):
     i, sh, seg, title, fi, fo = job
-    out = f'{SH}/{i:03d}.mov'
-    # fingerprint of everything that shapes this shot; a cached shot is reused only if it matches exactly
+    # fingerprint of everything that shapes this shot; the cache file is named by its hash, so inserting or removing
+    # shots elsewhere never invalidates it — only shots whose own inputs changed are rendered again
     fp = json.dumps(dict(sh={k: sh[k] for k in ('file', 'ss', 'dur', 'portrait', 'hdr')}, title=title, fi=fi, fo=fo,
                          rot=ROT.get(sh['file'], 0.0), animals=[(a['name'], a['start'], a['end']) for a in ANIMALS.get(sh['file'], [])],
                          style=STYLE, gfx=os.path.getmtime(gfx.__file__)), sort_keys=True, default=str)
-    if os.path.exists(out) and os.path.getsize(out) > 0 and os.path.exists(out + '.json') and open(out + '.json').read() == fp:
+    import hashlib
+    out = f"{SH}/{hashlib.sha1(fp.encode()).hexdigest()[:16]}.mov"
+    if os.path.exists(out) and os.path.getsize(out) > 0:
         return out
     callouts = f"{W}/landmarks/{sh['file']}_callouts.mov"
     s = dict(file=sh['file'], ss=sh['ss'], dur=sh['dur'], portrait=sh['portrait'], hdr=sh['hdr'],
@@ -123,10 +125,11 @@ if __name__ == '__main__':
           f'{sum(1 for j in jobs if j[4] and j[0])} city changes')
     with ThreadPoolExecutor(JOBS) as ex:
         futs = [ex.submit(do, j) for j in jobs]
-        for f in tqdm(as_completed(futs), total=len(futs), desc='Rendering shots', unit='shot'):
+        for f in tqdm(as_completed(futs), total=len(futs), desc='Rendering shots (cached ones are instant)', unit='shot'):
             f.result()
+        paths = [f.result() for f in futs]
     lst = f'{OUT}/concat.txt'
-    open(lst, 'w').write(''.join(f"file 'shots/{j[0]:03d}.mov'\n" for j in jobs))
+    open(lst, 'w').write(''.join(f"file '{os.path.relpath(p, OUT)}'\n" for p in paths))
     print('Joining shots…')
     run([FF, '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', f'{OUT}/joined.mov'], 'concat').wait()
     print('Measuring loudness…')

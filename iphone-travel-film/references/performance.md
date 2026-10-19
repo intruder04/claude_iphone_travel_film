@@ -25,3 +25,8 @@ instead of letting it freeze the machine.
   embeddings are all reused by later steps.
 - Apple Vision and tracking use one process per core. CLIP and Whisper use the GPU. Reverse geocoding is
   limited to 1 request per second by the Nominatim usage policy.
+
+## Waiting on jobs
+Match long jobs by their exact script path (`pgrep -f 'scripts/render_all.py'`), never by a bare word: a wait
+loop whose own command line contains the word matches itself and never ends. Report % progress to the user
+while waiting (read the tqdm line or count finished outputs) — never wait silently.
