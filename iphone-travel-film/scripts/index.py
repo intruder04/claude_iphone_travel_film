@@ -6,7 +6,7 @@ Output: meta/index.json (sorted by capture time)."""
 import datetime, glob, json, os, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SRC, P, jsave, probe
+from common import SRC, P, jsave, probe, NOROT
 from tqdm import tqdm
 
 EXT = ('.mov', '.mp4', '.m4v')
@@ -37,7 +37,7 @@ def main():
             t = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(SRC, f)))
         w, h = v['width'], v['height']
         out.append(dict(file=f, time=t.isoformat(), dur=float(p['format']['duration']), fps=n / d,
-                        portrait=(abs(rot) == 90) != (h > w), hdr=v.get('color_transfer') == 'arib-std-b67',
+                        portrait=((abs(rot) == 90) != (h > w)) and f not in NOROT, hdr=v.get('color_transfer') == 'arib-std-b67',
                         lat=x.get('GPSLatitude'), lon=x.get('GPSLongitude'), alt=x.get('GPSAltitude'),
                         model=x.get('Model', ''), lens=x.get('LensModel', ''),
                         audio=any(s['codec_type'] == 'audio' and s['codec_name'] == 'aac' for s in p['streams'])))

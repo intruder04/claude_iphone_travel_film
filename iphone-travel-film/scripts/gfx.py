@@ -243,7 +243,7 @@ def title_lower_third(info, t, dur=5.0):
     bar = ease_out(t / 0.7) * clamp((dur - t) / 0.5)
     d.rectangle((x0, y0, x0 + 14, y0 + int(380 * bar)), fill=rgba(ACCENT, a))
     p = ease_out((t - 0.15) / 0.8); off = int((1 - p) * 60)
-    line1 = _join(info['city'].upper(), info['date'], sep='  ·  ') if info.get('new_city') else info['date']
+    line1 = _join((info.get('area') or info['city']).upper() if info.get('new_city') or info.get('area') else '', info['date'], sep='  ·  ')
     draw_tracked(d, (x0 + 60, y0 + off), line1, sf(58, 'Semibold'), rgba(SOFT, a * p), 10)
     d.text((x0 + 56, y0 + 80 + off), info['place'], font=sf(150, 'Bold'), fill=rgba(WHITE, a * p))
     if info.get('place_local'):

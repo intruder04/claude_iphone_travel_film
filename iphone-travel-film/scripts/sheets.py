@@ -2,6 +2,8 @@
 
   sheets.py clips              review/sheet_NN.jpg   10 clips per sheet, 3 frames each (20/50/80 %), number + time + length
   sheets.py compact            review/compact_N.jpg  1 frame per clip, 54 per sheet (fast overview of a whole trip)
+  sheets.py intent             review/intent_NN.jpg  8 clips per sheet, 6 frames across each clip with timestamps,
+                                plus text Vision read and speech — to decide what each clip is FOR and where its moment is
   sheets.py grid CLIP T [...]  review/grid/CLIP_T.jpg 1920x1080 frame with a labelled 100 px grid, for pinning
                                 coordinates of landmarks/animals precisely (pairs of CLIP T may repeat)
 """
@@ -35,6 +37,29 @@ def _sheet(args):
         S.paste(cell, (0, k * CH))
     S.save(P('review', f'sheet_{i:02d}.jpg'), quality=80); return i
 
+def intent():
+    from multiprocessing import Pool
+    d = jload('meta/index.json')
+    with Pool(os.cpu_count()) as p: n = p.map(_intent_sheet, [(i, d[i * 8:(i + 1) * 8]) for i in range((len(d) + 7) // 8)])
+    print(f'{len(n)} intent sheets in review/')
+
+def _intent_sheet(args):
+    i, rs = args; CW, CH, LH = 300, 169, 26; F, Fs = _font(20), _font(15)
+    AV = jload('meta/apple_vision.json', {}); SP = jload('meta/speech.json', {})
+    S = Image.new('RGB', (CW * 6, (CH + LH) * len(rs)), (25, 25, 25)); d = ImageDraw.Draw(S)
+    for k, r in enumerate(rs):
+        fs = sorted(glob.glob(P('frames', r['file'], '*.jpg'))); y = k * (CH + LH)
+        txt = ' | '.join(dict.fromkeys(t for _, t in AV.get(r['file'], {}).get('text', [])))[:70]
+        sp = SP.get(r['file'], {}).get('text', '')[:60]
+        lab = f"{os.path.splitext(r['file'])[0]}  {r['time'][5:16].replace('T', ' ')}  {r['dur']:.0f}s" + (f'  TEXT: {txt}' if txt else '') + (f'  SAID: {sp}' if sp else '')
+        d.text((6, y + 3), lab, font=F, fill=(255, 220, 0))
+        for j in range(6):
+            if not fs: break
+            q = (j + 0.5) / 6; f = Image.open(fs[min(len(fs) - 1, int(q * len(fs)))]); f.thumbnail((CW, CH))
+            S.paste(f, (j * CW + (CW - f.width) // 2, y + LH + (CH - f.height) // 2))
+            d.text((j * CW + 4, y + LH + 2), f'{q * r["dur"]:.0f}s', font=Fs, fill=(255, 255, 255))
+    S.save(P('review', f'intent_{i:02d}.jpg'), quality=78); return i
+
 def compact():
     d = jload('meta/index.json'); F = _font(16); CW, CH, C = 320, 180, 6
     for s in range(0, len(d), 54):
@@ -65,6 +90,7 @@ if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'clips'
     if cmd == 'clips': clips()
     elif cmd == 'compact': compact()
+    elif cmd == 'intent': intent()
     elif cmd == 'grid':
         a = sys.argv[2:]
         for c, t in zip(a[::2], a[1::2]): grid(c if '.' in c else c + '.MOV', t)

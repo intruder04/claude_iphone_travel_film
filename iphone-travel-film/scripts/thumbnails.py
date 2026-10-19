@@ -8,8 +8,11 @@ bottom-right corner (YouTube's duration stamp).
   thumbnails.py make [N N ...]       render all styles; order = pop subject (a person or animal), cinematic hero
                                      (wide landmark/scenery), minimal, … (default: best 4)
 
-Text comes from project.json:  "thumbnail_text": ["JAPAN", "IN 27 MIN"],  "thumbnail_badge": "🇯🇵 Tokyo → Kyoto"
-(Claude proposes these from the trip; keep the big text to ≤ 3 words.)
+Text comes from project.json, after the user picked from proposed options (never put the video length in it):
+  "thumbnail_variants": [["JAPAN", "Tokyo · Kamakura · Kyoto"], ["SUMMER", "IN JAPAN"]],   # [headline, line 2]
+  "thumbnail_badge": "🇯🇵 Japan 2026",  "thumbnail_route": ["Tokyo", "Kamakura", "Kyoto"],
+  "thumbnail_accents": ["flag_badge", "yellow_bar", "route_dots"]
+Every variant is rendered in every style → at least 10 thumbnails (more variants or frames are added if needed).
 Subject cut-outs use Apple Vision's foreground-instance mask ("lift subject") on the Neural Engine."""
 import glob, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -125,6 +128,29 @@ def badge(img, text, xy, h=46):
 
 # ------------------------------------------------------------------ styles
 YELLOW = (255, 214, 10)
+ACC = set(CFG.get('thumbnail_accents', ['flag_badge', 'yellow_bar']))
+ROUTE = CFG.get('thumbnail_route', [])
+
+def route_dots(img, xy, width, light=True):
+    """Thin map line with dots and city names (accent 'route_dots')."""
+    if 'route_dots' not in ACC or len(ROUTE) < 2: return
+    d = ImageDraw.Draw(img); x0, y = xy; n = len(ROUTE); step = width / (n - 1); f = sf(26, 'Semibold')
+    col = (255, 255, 255) if light else (20, 20, 20)
+    for k in range(n - 1):
+        for xx in range(int(x0 + k * step + 14), int(x0 + (k + 1) * step - 14), 14):
+            d.line((xx, y, xx + 7, y), fill=col + (230,), width=4)
+    for k, name in enumerate(ROUTE):
+        cx = x0 + k * step
+        d.ellipse((cx - 11, y - 11, cx + 11, y + 11), fill=YELLOW, outline=(20, 20, 20), width=3)
+        tw = d.textlength(name, font=f)
+        d.text((cx - tw / 2 + 2, y + 20 + 2), name, font=f, fill=(0, 0, 0, 160)); d.text((cx - tw / 2, y + 20), name, font=f, fill=col)
+
+def second_line(d, x0, y2, w2, f2, bar=True):
+    if bar and 'yellow_bar' in ACC:
+        tw = d.textlength(w2, font=f2); d.rectangle((x0 - 12, y2 + f2.size * 0.12, x0 + tw + 12, y2 + f2.size * 1.02), fill=YELLOW)
+        d.text((x0, y2), w2, font=f2, fill=(10, 10, 10))
+    else:
+        text_stroke(d, (x0, y2), w2, f2, fill=YELLOW, sw=7)
 
 def subject_crop(big):
     """Zoom a 16:9 crop of the 4K frame onto the main subject (≈60 % of the height, on the right third).
@@ -158,11 +184,11 @@ def style_pop(big, words, badge_text):
     d = ImageDraw.Draw(img); x0 = 48
     w1, w2 = (words + [''])[:2]
     f1 = fit_font(d, w1, condensed, TW * 0.46, 230); text_stroke(d, (x0, 130), w1, f1, fill=(255, 255, 255), sw=10)
+    y2 = 130 + f1.size * 0.95
     if w2:
-        f2 = fit_font(d, w2, condensed, TW * 0.46, 150); y2 = 130 + f1.size * 0.95
-        tw = d.textlength(w2, font=f2); d.rectangle((x0 - 12, y2 + f2.size * 0.12, x0 + tw + 12, y2 + f2.size * 1.02), fill=YELLOW)
-        d.text((x0, y2), w2, font=f2, fill=(10, 10, 10))
-    if badge_text: badge(img, badge_text, (int(x0), 44))
+        f2 = fit_font(d, w2, condensed, TW * 0.46, 120); second_line(d, x0, y2, w2, f2); y2 += f2.size * 1.15
+    route_dots(img, (x0 + 20, min(TH - 120, y2 + 60)), TW * 0.38)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(x0), 44))
     return img
 
 def style_cinematic(src, words, badge_text):
@@ -174,8 +200,15 @@ def style_cinematic(src, words, badge_text):
     f = fit_font(d, w, lambda s: sf(s, 'Black'), TW * 0.86, 260)
     shadow_text(img, (TW / 2, TH * 0.70), w, f, anchor='ms', blur=16, alpha=200)
     if len(words) > 1:
-        fs = sf(46, 'Bold'); shadow_text(img, (TW / 2, TH * 0.70 + 64), ' '.join(words[1:]).upper(), fs, fill=YELLOW, anchor='ms', blur=8)
-    if badge_text: badge(img, badge_text, (40, 36))
+        fs = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 64)
+        if 'yellow_bar' in ACC:
+            tw = d.textlength(words[1].upper(), font=fs); y = TH * 0.70 + 22
+            d.rectangle((TW / 2 - tw / 2 - 16, y, TW / 2 + tw / 2 + 16, y + fs.size * 1.15), fill=YELLOW)
+            d.text((TW / 2, y + fs.size * 0.58), words[1].upper(), font=fs, fill=(10, 10, 10), anchor='mm')
+        else:
+            shadow_text(img, (TW / 2, TH * 0.70 + 64), words[1].upper(), fs, fill=YELLOW, anchor='ms', blur=8)
+    route_dots(img, (TW * 0.3, 70), TW * 0.4)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
 def style_collage(srcs, words, badge_text):
@@ -188,11 +221,15 @@ def style_collage(srcs, words, badge_text):
         panel = grade(cover(s, int(TW / n + sk * 2), TH), 1.25, 1.1).convert('RGBA')
         layer = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); layer.paste(panel, (int(x0 - sk), 0)); img.paste(layer, (0, 0), m)
         if k: ImageDraw.Draw(img).line([(x0 + sk / 2, 0), (x0 - sk / 2, TH)], fill=(255, 255, 255), width=12)
-    d = ImageDraw.Draw(img); w = ' '.join(words[:2])
-    f = fit_font(d, w, condensed, TW * 0.8, 170); tw = d.textlength(w, font=f)
-    bx0, by0 = (TW - tw) / 2 - 34, TH * 0.36; d.rounded_rectangle((bx0, by0, bx0 + tw + 68, by0 + f.size * 1.05), 18, fill=YELLOW)
-    d.text((TW / 2, by0 + f.size * 0.53), w, font=f, fill=(10, 10, 10), anchor='mm')
-    if badge_text: badge(img, badge_text, (40, 36))
+    d = ImageDraw.Draw(img); w = words[0]
+    f = fit_font(d, w, condensed, TW * 0.8, 190); tw = d.textlength(w, font=f)
+    bx0, by0 = (TW - tw) / 2 - 34, TH * 0.30
+    d.rounded_rectangle((bx0, by0, bx0 + tw + 68, by0 + f.size * 1.05), 18, fill=YELLOW if 'yellow_bar' in ACC else (15, 15, 18))
+    d.text((TW / 2, by0 + f.size * 0.53), w, font=f, fill=(10, 10, 10) if 'yellow_bar' in ACC else (255, 255, 255), anchor='mm')
+    if len(words) > 1:
+        f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 60)
+        text_stroke(d, (TW / 2, by0 + f.size * 1.05 + 50), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
 def style_minimal(src, words, badge_text):
@@ -201,36 +238,45 @@ def style_minimal(src, words, badge_text):
     g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.55), int(TW * 0.7), TH), fill=255)
     g = g.filter(ImageFilter.GaussianBlur(140)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.point(lambda v: v * 0.7)); img.alpha_composite(sh)
     d = ImageDraw.Draw(img)
-    if len(words) > 1: d.text((56, TH - 230), ' '.join(words[1:]).upper(), font=sf(30, 'Semibold'), fill=(235, 235, 235))
-    shadow_text(img, (52, TH - 200), words[0].lower(), sf(150, 'Bold'), blur=10, alpha=140)
-    if badge_text: badge(img, badge_text, (40, 36))
+    if len(words) > 1: d.text((56, TH - 250), words[1].upper(), font=sf(34, 'Semibold'), fill=(240, 240, 240))
+    shadow_text(img, (52, TH - 220), words[0].lower(), fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 150), blur=10, alpha=140)
+    route_dots(img, (TW * 0.55, TH - 120), TW * 0.36)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
 def make(nums=None):
     cands = json.load(open(os.path.join(OUT, 'candidates.json')))
     nums = nums or [c['n'] for c in cands[:4]]
-    words = CFG.get('thumbnail_text') or [CFG.get('output_name', 'MY TRIP').replace('_', ' ').upper()]
+    variants = CFG.get('thumbnail_variants') or [CFG.get('thumbnail_text') or [CFG.get('output_name', 'MY TRIP').replace('_', ' ').upper()]]
     btxt = CFG.get('thumbnail_badge', '')
     big = {c['n']: grab(c['file'], c['t'], 3840, 2160) for c in cands if c['n'] in nums}
     frames = {n: im.resize((TW, TH), Image.LANCZOS) for n, im in big.items()}
+    a = (nums * 4)[:max(4, len(nums))]      # 1st = subject to lift out, 2nd = hero scenery, 3rd = calm wide, rest = collage
     outs = []
     def save(im, name):
         if im is None: print(f'skipped {name}: no clear subject'); return
         p = os.path.join(OUT, name); im.convert('RGB').save(p, quality=92, optimize=True)
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
-    a = (nums * 4)[:4]          # order matters: 1st = pop subject, 2nd = cinematic hero, 3rd = minimal, 2nd-4th = collage
-    save(style_pop(big[a[0]], words, btxt), 'thumb_1_pop.jpg')
-    save(style_cinematic(frames[a[1]], words, btxt), 'thumb_2_cinematic.jpg')
-    save(style_collage([frames[n] for n in dict.fromkeys(a[1:] + a[:1])][:3], words, btxt), 'thumb_3_collage.jpg')
-    save(style_minimal(frames[a[2]], words, btxt), 'thumb_4_minimal.jpg')
-    people = [n for n in sorted(nums, key=lambda n: -next(c['people'] for c in cands if c['n'] == n)) if n != a[0]]
-    if people: save(style_pop(big[people[0]], words, btxt), 'thumb_5_pop_people.jpg')
+    for f in glob.glob(os.path.join(OUT, 'thumb_*.jpg')): os.remove(f)
+    for v, words in enumerate(variants, 1):
+        # rotate source frames between variants so the options differ in picture too
+        r = a[(v - 1) % len(a):] + a[:(v - 1) % len(a)]
+        pop_src = a[0] if v % 2 else (a[3] if len(a) > 3 else a[0])
+        save(style_pop(big[pop_src], words, btxt), f'thumb_{v}a_pop.jpg')
+        save(style_cinematic(frames[r[1]], words, btxt), f'thumb_{v}b_cinematic.jpg')
+        save(style_collage([frames[n] for n in dict.fromkeys(r[1:] + r[:1])][:3], words, btxt), f'thumb_{v}c_collage.jpg')
+        save(style_minimal(frames[r[2]], words, btxt), f'thumb_{v}d_minimal.jpg')
+    k = 0
+    while len(outs) < 10 and k < len(a):                       # top up to the minimum of 10
+        save(style_cinematic(frames[a[k]], variants[k % len(variants)], btxt), f'thumb_x{k}_cinematic.jpg'); k += 1
     ims = [Image.open(p).resize((640, 360)) for p in outs]
-    S = Image.new('RGB', (1280, 360 * ((len(ims) + 1) // 2)), (20, 20, 20))
-    for k, im in enumerate(ims): S.paste(im, ((k % 2) * 640, (k // 2) * 360))
+    S = Image.new('RGB', (1280, 360 * ((len(ims) + 1) // 2)), (20, 20, 20)); Fn = sf(28, 'Bold')
+    for k, (p, im) in enumerate(zip(outs, ims)):
+        ImageDraw.Draw(im).text((10, 320), os.path.basename(p)[6:-4], font=Fn, fill=(255, 255, 0), stroke_width=3, stroke_fill=(0, 0, 0))
+        S.paste(im, ((k % 2) * 640, (k // 2) * 360))
     S.save(os.path.join(OUT, 'all_thumbnails.jpg'), quality=88)
-    for p in outs: print(p, f'{os.path.getsize(p) / 1e6:.2f} MB')
+    print(f'{len(outs)} thumbnails → previews/thumbnails/  (overview: all_thumbnails.jpg)')
 
 if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else ''

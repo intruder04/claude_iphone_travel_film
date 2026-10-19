@@ -15,14 +15,14 @@ is far steadier than patch tracking. Between two anchors the two tracks are cros
 import json, os, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
-from common import FF, SRC, P, jload, jsave, fps_of, grab
+from common import FF, SRC, src, P, jload, jsave, fps_of, grab
 from tqdm import tqdm
 
 TW, TH = 1280, 720; S = 1920 / TW
 
 # ------------------------------------------------------------------ tracking
 def _load(clip):
-    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', '-i', os.path.join(SRC, clip), '-vf',
+    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', *src(clip), '-vf',
                           f'scale={TW}:{TH},format=gray', '-f', 'rawvideo', '-'], capture_output=True).stdout
     return np.frombuffer(raw, np.uint8).reshape(-1, TH, TW)
 

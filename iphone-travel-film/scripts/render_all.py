@@ -3,9 +3,12 @@
   - every shot is rendered to renders/shots/NNN.mov (HLG HEVC 10-bit 60p, PCM audio); finished shots are reused,
     so after changing one thing delete only the affected shots and re-run
   - a location title only on the first shot of a segment with "title": true; segments with "new_city" get the
-    cinematic card (B) whatever the chosen style, as a chapter marker
-  - animal labels (meta/animal_labels.json) and horizon fixes (meta/rotate.json) are applied per shot
-  - shots of "keep_whole" segments reuse landmarks/<clip>_callouts.mov when it exists
+    cinematic card (B by default, project.json city_change_style) as a chapter marker
+  - city changes: the last shot of a city fades to black with the sound fading out, the first shot of the new city
+    fades in from black (sound fading in) under the city card
+  - animal labels (meta/animal_labels.json, keyed by clip + clip time) and horizon fixes (meta/rotate.json, keyed by
+    clip) are applied wherever that clip is used
+  - aerial windows ("plane" in locations.json) are cut from landmarks/<clip>_callouts.mov when it exists
   - shots are joined losslessly (concat demuxer) and the audio is loudness-normalised (-14 LUFS, YouTube)
 Memory-safe: at most JOBS shots in flight (default 2), each ffmpeg under the RSS watchdog.
 Usage: render_all.py [TITLE_STYLE]   (A_lower_third | B_cinematic | C_map_pin | D_vertical; default project.json title_style)
@@ -26,9 +29,9 @@ E = json.load(open(f'{W}/meta/edl.json'))
 E['edl'] = [e for e in E['edl'] if e['dur'] >= 2.0]          # no sub-2s flash cuts
 SEGS = {s['id']: s for s in E['segments']}
 title_fn = gfx.STYLES[STYLE]
-try: ANIMALS = json.load(open(f'{W}/meta/animal_labels.json'))     # {shot index: [label, ...]}
+try: ANIMALS = json.load(open(f'{W}/meta/animal_labels.json'))     # {clip: [label with clip-time start/end, ...]}
 except FileNotFoundError: ANIMALS = {}
-try: ROT = json.load(open(f'{W}/meta/rotate.json'))        # {shot index: PIL-convention degrees}
+try: ROT = json.load(open(f'{W}/meta/rotate.json'))        # {clip: PIL-convention degrees}
 except FileNotFoundError: ROT = {}
 
 def info_for(seg, shot):
@@ -36,36 +39,40 @@ def info_for(seg, shot):
     lat, lon = seg.get('lat'), seg.get('lon')
     coords = f"{abs(lat):.3f}° {'N' if lat >= 0 else 'S'}  {abs(lon):.3f}° {'E' if lon >= 0 else 'W'}" if lat is not None else ''
     return dict(city=seg.get('city', ''), city_local=seg.get('city_local', ''), place=seg.get('place', ''),
-                place_local=seg.get('place_local', ''), country=seg.get('country', ''),
+                place_local=seg.get('place_local', ''), country=seg.get('country', ''), area=seg.get('area', ''),
                 date=d.strftime(CFG.get('date_format', '%-d %B %Y')), coords=coords, new_city=seg.get('new_city', False))
 
+FADE = float(CFG.get('city_fade_seconds', 1.0))
+
 def plan():
-    jobs, seen = [], set()
-    for i, sh in enumerate(E['edl']):
+    jobs, seen = [], set(); edl = E['edl']
+    city = [SEGS[e['seg']].get('city', '') for e in edl]
+    for i, sh in enumerate(edl):
         seg = SEGS[sh['seg']]; title = None
         if seg.get('title') and sh['seg'] not in seen and sh['dur'] >= 3.5:
             title = info_for(seg, sh); seen.add(sh['seg'])
-        jobs.append((i, sh, seg, title))
+        fi = 0.8 if i == 0 else (FADE if city[i] != city[i - 1] else 0)
+        fo = 2.0 if i == len(edl) - 1 else (FADE if city[i] != city[i + 1] else 0)
+        jobs.append((i, sh, seg, title, fi, fo))
     return jobs
 
 def do(job):
-    i, sh, seg, title = job
+    i, sh, seg, title, fi, fo = job
     out = f'{SH}/{i:03d}.mov'
     if os.path.exists(out) and os.path.getsize(out) > 0: return out
-    if SEGS[sh['seg']].get('keep_whole') and os.path.exists(f"{W}/landmarks/{sh['file']}_callouts.mov"):
-        src = f"{W}/landmarks/{sh['file']}_callouts.mov"
-        rc = run([FF, '-v', 'error', '-y', '-i', src, '-map', '0:v', '-map', '0:a?', '-c', 'copy', out + '.tmp.mov'], 'copy').wait()
-        os.replace(out + '.tmp.mov', out); return out
+    callouts = f"{W}/landmarks/{sh['file']}_callouts.mov"
     s = dict(file=sh['file'], ss=sh['ss'], dur=sh['dur'], portrait=sh['portrait'], hdr=sh['hdr'],
-             rotate=-ROT.get(str(i), 0.0))   # ffmpeg rotate is clockwise-positive, PIL counter-clockwise
-    if i == 0: s['fade_in'] = 0.8
-    if i == len(E['edl']) - 1: s['fade_out'] = 2.0
+             rotate=-ROT.get(sh['file'], 0.0), fade_in=fi, fade_out=fo)  # ffmpeg rotate is clockwise-positive, PIL ccw
+    if sh.get('tag') == 'plane' and os.path.exists(callouts):
+        s['source'] = callouts                                          # pre-rendered 4K HLG clip with landmark pins
     layers, end = [], 0.0
     if title:
         tdur = min(5.0, sh['dur'] - 0.4)
         tf = gfx.STYLES[CFG.get('city_change_style', 'B_cinematic')] if title.get('new_city') else title_fn
         layers.append(lambda t, info=title, td=tdur, tf=tf: tf(info, t - 0.3, dur=td)); end = max(end, tdur + 0.5)
-    labels = ANIMALS.get(str(i), [])
+    labels = [dict(lb, start=lb['start'] - sh['ss'], end=min(lb['end'], sh['ss'] + sh['dur']) - sh['ss'],
+                   track=lb['track']) for lb in ANIMALS.get(sh['file'], [])
+              if lb['start'] < sh['ss'] + sh['dur'] - 0.5 and lb['end'] > sh['ss'] + 0.5 and lb.get('shot_ss') == sh['ss']]
     if labels:
         co = gfx.Callouts(marker='dot')                                 # animal labels: no pin, short
         def animal_layer(t, labels=labels, co=co):
@@ -92,13 +99,14 @@ def do(job):
 
 if __name__ == '__main__':
     jobs = plan()
-    print(f'{len(jobs)} shots, {sum(j[1]["dur"] for j in jobs)/60:.1f} min, title style {STYLE}, {JOBS} parallel jobs')
+    print(f'{len(jobs)} shots, {sum(j[1]["dur"] for j in jobs)/60:.1f} min, title style {STYLE}, {JOBS} parallel jobs, '
+          f'{sum(1 for j in jobs if j[4] and j[0])} city changes')
     with ThreadPoolExecutor(JOBS) as ex:
         futs = [ex.submit(do, j) for j in jobs]
         for f in tqdm(as_completed(futs), total=len(futs), desc='Rendering shots', unit='shot'):
             f.result()
     lst = f'{OUT}/concat.txt'
-    open(lst, 'w').write(''.join(f"file 'shots/{i:03d}.mov'\n" for i, *_ in jobs))
+    open(lst, 'w').write(''.join(f"file 'shots/{j[0]:03d}.mov'\n" for j in jobs))
     print('Joining shots…')
     run([FF, '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', f'{OUT}/joined.mov'], 'concat').wait()
     print('Measuring loudness…')

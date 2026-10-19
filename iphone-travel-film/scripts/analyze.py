@@ -9,7 +9,7 @@ import json, os, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cv2, numpy as np
-from common import FF, SRC, P, jload, TONEMAP_CPU
+from common import FF, SRC, src, P, jload, TONEMAP_CPU
 from tqdm import tqdm
 
 def run(r):
@@ -20,7 +20,7 @@ def run(r):
     tm = TONEMAP_CPU if r['hdr'] else 'format=yuv420p'
     fc = (f"[0:v]fps=10,scale={'432:768' if r['portrait'] else '768:432'}:flags=bilinear,{tm},split=2[a][b];"
           f"[a]select='not(mod(n\\,5))'[a2];[b]scale={pw}:{ph},format=gray[b2]")
-    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', '-i', os.path.join(SRC, f), '-filter_complex', fc,
+    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', *src(f), '-filter_complex', fc,
                           '-map', '[a2]', '-q:v', '4', f'{out}/%04d.jpg', '-map', '[b2]', '-f', 'rawvideo', '-'],
                          capture_output=True).stdout
     fr = np.frombuffer(raw, np.uint8)[: (len(raw) // (pw * ph)) * pw * ph].reshape(-1, ph, pw)

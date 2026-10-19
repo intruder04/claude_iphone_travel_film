@@ -9,19 +9,19 @@
 
 animals.json (written by Claude after looking at gridded frames, coordinates in 1920x1080 space):
   [{"file": "IMG_0001.MOV", "t": 7.9, "x": 979, "y": 576, "name": "Grey Heron"},              # optical-flow tracked
-   {"file": "IMG_0002.MOV", "keys": [[4.0,1450,910],[5.2,1790,990]], "name": "Water Strider",
-    "show": [2.6, 4.4]}]                                                                       # keyframed (tiny/fast)
-"t"/"keys" are clip times. Label shows ~2.6 s ("show" = seconds into the shot to override)."""
+   {"file": "IMG_0002.MOV", "keys": [[4.0,1450,910],[5.2,1790,990]], "name": "Water Strider"}] # keyframed (tiny/fast)
+"t" / the first key = the clip time where the animal FIRST becomes visible: the label appears right then, for ~2.6 s.
+List every clip an animal is in; only its first appearance in the edit (edit order, not file order) gets a label.
+Output meta/animal_labels.json {clip: [{name, start, end (clip time), shot_ss, track (60 fps from shot_ss)}]}."""
 import json, os, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
-from common import FF, SRC, P, jload, jsave, edl_shots, grab
+from common import FF, SRC, src, P, jload, jsave, edl_shots, grab
 
 TW, TH = 960, 540; S = 3840 / TW; SHOW = 2.6
 
 def _load(clip, ss, dur):
-    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-i',
-                          os.path.join(SRC, clip), '-vf', f'fps=60,scale={TW}:{TH},format=gray', '-f', 'rawvideo', '-'],
+    raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', *src(clip), '-vf', f'fps=60,scale={TW}:{TH},format=gray', '-f', 'rawvideo', '-'],
                          capture_output=True).stdout
     return np.frombuffer(raw, np.uint8).reshape(-1, TH, TW)
 
@@ -70,36 +70,48 @@ def search(queries, top=14):
 
 def track():
     spec = jload('animals.json'); E, edl = edl_shots(); out = {}; seen = set()
-    for a in spec:
-        if a['name'] in seen: continue                     # once per animal: first appearance only
+    pos = {}
+    for k, e in enumerate(edl):
+        pos.setdefault(e['file'], []).append((k, e))
+    def first_in_edit(a):
+        t = a['keys'][0][0] if 'keys' in a else a['t']
+        for k, e in pos.get(a['file'], []):
+            if e['ss'] - 0.2 <= t <= e['ss'] + e['dur'] - 1.0: return k, e, t
+        for k, e in pos.get(a['file'], []):                 # animal visible before the shot starts → label at shot start
+            if t < e['ss'] and e['dur'] > 2.5: return k, e, e['ss'] + 0.2
+        return None
+    placed = sorted([(fe[0], a, fe[1], fe[2]) for a in spec for fe in [first_in_edit(a)] if fe], key=lambda x: x[0])
+    for k, a, e, t0 in placed:
+        if a['name'] in seen: continue                        # once per animal: its first appearance in the film
         seen.add(a['name'])
-        idx = next((i for i, e in enumerate(edl) if e['file'] == a['file']), None)
-        if idx is None: print(f"skip {a['name']}: {a['file']} is not in the edit"); continue
-        e = edl[idx]
+        st = max(e['ss'] + 0.15, t0); en = min(e['ss'] + e['dur'] - 0.3, st + SHOW)
+        n = int(round(e['dur'] * 60)); ts = e['ss'] + np.arange(n) / 60
         if 'keys' in a:
-            n = int(round(e['dur'] * 60)); ts = e['ss'] + np.arange(n) / 60; kt, kx, ky = zip(*a['keys'])
+            kt, kx, ky = zip(*a['keys'])
             tr = np.stack([np.interp(ts, kt, kx), np.interp(ts, kt, ky)], 1) * 2
-            st, en = a.get('show', (max(0.3, kt[0] - e['ss']), min(e['dur'] - 0.3, kt[0] - e['ss'] + SHOW)))
         else:
-            fr = _load(a['file'], e['ss'], e['dur']); k = max(0, min(len(fr) - 1, int(round((a['t'] - e['ss']) * 60))))
-            tr = _track(fr, k, np.array([a['x'] / 2, a['y'] / 2])) * S
-            st, en = a.get('show', (0.4, min(e['dur'] - 0.3, 0.4 + SHOW)))
-        out.setdefault(str(idx), []).append(dict(file=a['file'], name=a['name'], start=st, end=en, track=tr.round(1).tolist()))
-        print(f"{a['name']:28} shot {idx:3d}  label {st:.1f}-{en:.1f}s")
+            fr = _load(a['file'], e['ss'], e['dur']); kk = max(0, min(len(fr) - 1, int(round((a['t'] - e['ss']) * 60))))
+            tr = _track(fr, kk, np.array([a['x'] / 2, a['y'] / 2])) * S
+        out.setdefault(a['file'], []).append(dict(name=a['name'], start=round(st, 2), end=round(en, 2), shot_ss=e['ss'],
+                                                  track=tr.round(1).tolist()))
+        print(f"{a['name']:28} shot {k:3d}  {a['file']}  label {st:.1f}-{en:.1f}s (clip time)")
+    missing = {a['name'] for a in spec} - seen
+    if missing: print('not in the edit:', ', '.join(sorted(missing)))
     jsave('meta/animal_labels.json', out, None)
 
 def check():
     from PIL import Image, ImageDraw
     from sheets import _font
-    A = jload('meta/animal_labels.json'); E, edl = edl_shots(); F = _font(16); rows = []
-    for idx, items in A.items():
+    A = jload('meta/animal_labels.json'); F = _font(16); rows = []
+    for clip, items in A.items():
         for it in items:
-            e = edl[int(idx)]; cells = []
+            cells = []
             for q in (0, 0.5, 1):
-                lt = it['start'] + (it['end'] - it['start']) * q; x, y = [v / 2 for v in it['track'][min(len(it['track']) - 1, int(lt * 60))]]
-                im = grab(it['file'], e['ss'] + lt).crop((int(x) - 160, int(y) - 110, int(x) + 160, int(y) + 110)); d = ImageDraw.Draw(im)
+                lt = it['start'] + (it['end'] - it['start']) * q
+                x, y = [v / 2 for v in it['track'][min(len(it['track']) - 1, int((lt - it['shot_ss']) * 60))]]
+                im = grab(clip, lt).crop((int(x) - 160, int(y) - 110, int(x) + 160, int(y) + 110)); d = ImageDraw.Draw(im)
                 d.line((145, 110, 175, 110), fill=(255, 0, 255), width=2); d.line((160, 95, 160, 125), fill=(255, 0, 255), width=2)
-                d.text((4, 4), f"{it['name']} +{lt:.1f}s", font=F, fill=(255, 255, 0)); cells.append(im)
+                d.text((4, 4), f"{it['name']} @{lt:.1f}s", font=F, fill=(255, 255, 0)); cells.append(im)
             r = Image.new('RGB', (960, 220)); [r.paste(c, (k * 320, 0)) for k, c in enumerate(cells)]; rows.append(r)
     Sh = Image.new('RGB', (1920, 220 * ((len(rows) + 1) // 2)))
     for k, r in enumerate(rows): Sh.paste(r, ((k % 2) * 960, (k // 2) * 220))

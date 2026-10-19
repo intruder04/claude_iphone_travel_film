@@ -12,7 +12,7 @@ Decode/encode use the M4 media engines (VideoToolbox). Benchmarks on this Mac (4
 import os, subprocess, sys, threading, time, tempfile
 import psutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import FF, ENV, VK, DEC, SRC, P, HLG_TAGS, sdr_gpu
+from common import FF, ENV, VK, DEC, SRC, src, P, HLG_TAGS, sdr_gpu
 from gfx import W, H, blank
 
 TMP = P('tmp')
@@ -76,7 +76,8 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
     fc = video_chain(seg['portrait'], seg['hdr'], seg.get('rotate', 0.0))
     # video and audio come from two separate demuxers of the same file: with one shared demuxer ffmpeg keeps
     # decoding 4K video ahead to feed the (fast) audio path and buffers GBs of frames while the overlay waits
-    inputs = [*DEC, '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-an', '-i', f"{SRC}/{seg['file']}"]
+    vsrc = ['-i', seg['source']] if seg.get('source') else src(seg['file'])     # e.g. pre-rendered callout clip
+    inputs = [*DEC, '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-an', *vsrc]
     ov = None; last = 'v'
     if overlay_fn:
         t0, t1 = ov_range or (0, dur)
@@ -96,7 +97,7 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
     af = [f'afade=t=in:st=0:d={afi}', f'afade=t=out:st={dur - afo:.3f}:d={afo}']
     if seg.get('volume', 1.0) != 1.0: af.append(f"volume={seg['volume']}")
     ai = 2 if ov else 1
-    if seg.get('audio', True): inputs += ['-vn', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-i', f"{SRC}/{seg['file']}"]
+    if seg.get('audio', True): inputs += ['-vn', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-i', os.path.join(SRC, seg['file'])]
     cmd = [FF, '-v', 'error', '-y', *inputs, '-filter_complex', fc, '-map', '[vo]', '-frames:v', str(n)]
     if seg.get('audio', True):
         cmd += ['-map', f'{ai}:a:0', '-af', ','.join(af) + ',aresample=48000,apad', '-ac', '2', '-t', f'{dur:.3f}', '-c:a', 'pcm_s16le']

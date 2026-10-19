@@ -24,7 +24,9 @@ def _load_cfg():
 
 CFG = _load_cfg()
 SRC = os.path.abspath(os.path.expanduser(CFG['source_dir']))
-LANG = CFG.get('local_language', '')          # ISO code of the local script shown in titles, '' = none
+LANG = CFG.get('local_language', '')
+# clips whose rotation tag is wrong (phone thought it was vertical while filming horizontally) — decoded as stored
+NOROT = set(CFG.get('ignore_rotation_tag', []))          # ISO code of the local script shown in titles, '' = none
 for _d in ('meta', 'meta/probe', 'meta/metrics', 'meta/clip', 'frames', 'landmarks', 'review',
            'renders', 'renders/shots', 'previews', 'tmp'):
     os.makedirs(os.path.join(WORK, _d), exist_ok=True)
@@ -67,6 +69,10 @@ def sdr_gpu(w, h):
             f"libplacebo=w={w}:h={h}:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:"
             "tonemapping=bt.2390:peak_detect=false:format=yuv420p,hwdownload,format=yuv420p")
 
+def src(clip):
+    """ffmpeg input args for a source clip (honours ignore_rotation_tag)."""
+    return (['-noautorotate'] if clip in NOROT else []) + ['-i', os.path.join(SRC, clip)]
+
 def probe(clip):
     """Cached ffprobe JSON of a source clip."""
     p = P('meta/probe', clip + '.json')
@@ -83,10 +89,14 @@ def fps_of(clip):
 def grab(clip, t, w=1920, h=1080, sdr=True):
     """One frame of a source clip as a PIL image (SDR tone-mapped by default)."""
     from PIL import Image
+    dur = float(probe(clip)['format']['duration']); t = max(0.0, min(t, dur - 0.15))
     vf = f'scale={w}:{h}' + (',' + TONEMAP_CPU if sdr else '')
-    raw = subprocess.run([FF, '-v', 'error', '-ss', f'{t:.3f}', '-i', os.path.join(SRC, clip), '-frames:v', '1',
+    raw = subprocess.run([FF, '-v', 'error', '-ss', f'{t:.3f}', *src(clip), '-frames:v', '1',
                           '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True).stdout
-    return Image.frombytes('RGB', (w, h), raw)
+    if len(raw) < w * h * 3:              # e.g. SDR source: tone-map not applicable → plain scale
+        raw = subprocess.run([FF, '-v', 'error', '-ss', f'{t:.3f}', *src(clip), '-frames:v', '1', '-vf', f'scale={w}:{h}',
+                              '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True).stdout
+    return Image.frombytes('RGB', (w, h), raw[:w * h * 3]) if len(raw) >= w * h * 3 else Image.new('RGB', (w, h))
 
 def edl_shots():
     """Shots of the current edit (sub-2 s flash cuts dropped)."""
