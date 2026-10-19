@@ -1,0 +1,10 @@
+numpy
+opencv-python-headless
+pillow
+requests
+tqdm
+psutil
+torch
+open_clip_torch
+pyobjc-framework-Vision
+pyobjc-framework-Quartz

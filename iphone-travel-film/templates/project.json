@@ -1,0 +1,14 @@
+{
+  "source_dir": "~/Movies/MyTrip",
+  "output_name": "My_Trip_2026",
+  "target_minutes": 15,
+  "title_style": "A_lower_third",
+  "city_change_style": "B_cinematic",
+  "local_language": "",
+  "label_language": "en",
+  "date_format": "%-d %B %Y",
+  "accent_rgb": [200, 70, 45],
+  "callout_scale": 0.7,
+  "music": false,
+  "user_agent": "iphone-travel-film-skill/1.0 (personal project)"
+}

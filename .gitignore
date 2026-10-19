@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+# never commit footage or project outputs
+*.mov
+*.MOV
+*.mp4
+*.m4v
+project.json
+!iphone-travel-film/templates/project.json
