@@ -52,8 +52,9 @@ Use AskUserQuestion (several questions per call) and record the answers in `proj
 7. **People and animals**: keep dual-camera (front + back) selfies? Keep animals only when they do something
    interesting, and label each species once?
 8. **Location titles**: neighbourhood/attraction names plus city names, shown only when the location
-   changes. A city change gets a big cinematic chapter card. Show names in the local script too (e.g. 京都,
-   Αθήνα, القاهرة)? Set `local_language` to the country's ISO code, or leave it empty.
+   changes. A city change gets a big cinematic chapter card. Under the name: a one-line description of what the
+   place is (default, `"desc"` per segment, written by Claude and checked for facts), or the name in the local
+   script (`local_language` + `place_local`). Render a still example and confirm the format before the film.
 9. **Output**: 4K HLG HDR for YouTube (default), plus a 1080p SDR preview.
 10. **Thumbnails** come after the film. First propose several text and graphic options (≤ 3 big words + a
     short line, never the video's length; a badge such as a flag emoji + route), let the user pick, then render
@@ -116,6 +117,8 @@ places) with what you see on the sheets:
   footage from inside a train, or a clip without GPS), trust the content.
 - **One segment per place visit**, in time order. Short transit clips go into the neighbouring segment with
   `"title": false`.
+- Give every titled segment a `desc`: one short line (≈ 40–65 characters) saying what the place IS, e.g.
+  "Temple founded in 778, its wooden stage built without nails". Facts only, no superlatives you can't back up.
 - Set `new_city: true` on the first segment in each new city. Add `country`, `city_local`/`place_local` when
   local script is wanted, and `lat`/`lon` for the map-pin style.
 - `weight` sets the share of runtime. Give big moments more, and repetitive walks (forest, endless gates)

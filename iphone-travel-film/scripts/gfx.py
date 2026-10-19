@@ -239,15 +239,19 @@ def title_lower_third(info, t, dur=5.0):
     if a <= 0: return img
     d = ImageDraw.Draw(img)
     x0, y0 = int(W * 0.065), int(H * 0.70)
-    soft_scrim(img, (x0 - 140, y0 - 140, x0 + 2100, y0 + 520), 0.55 * a)
+    soft_scrim(img, (x0 - 140, y0 - 140, x0 + (2500 if info.get('desc') else 2100), y0 + 520), (0.72 if info.get('desc') else 0.55) * a)
     bar = ease_out(t / 0.7) * clamp((dur - t) / 0.5)
     d.rectangle((x0, y0, x0 + 14, y0 + int(380 * bar)), fill=rgba(ACCENT, a))
     p = ease_out((t - 0.15) / 0.8); off = int((1 - p) * 60)
     line1 = _join((info.get('area') or info['city']).upper() if info.get('new_city') or info.get('area') else '', info['date'], sep='  ·  ')
     draw_tracked(d, (x0 + 60, y0 + off), line1, sf(58, 'Semibold'), rgba(SOFT, a * p), 10)
     d.text((x0 + 56, y0 + 80 + off), info['place'], font=sf(150, 'Bold'), fill=rgba(WHITE, a * p))
-    if info.get('place_local'):
-        q = ease_out((t - 0.45) / 0.8)
+    q = ease_out((t - 0.45) / 0.8)
+    if info.get('desc'):                                   # one-line description of what the place is
+        fd = sf(70, 'Semibold'); desc = info['desc']
+        while text_w(d, desc, fd) > W * 0.62 and fd.size > 40: fd = sf(fd.size - 4, 'Medium')
+        d.text((x0 + 62, y0 + 280 + int((1 - q) * 40)), desc, font=fd, fill=rgba(SOFT, a * q))
+    elif info.get('place_local'):
         d.text((x0 + 62, y0 + 270 + int((1 - q) * 40)), info['place_local'], font=local_font(78), fill=rgba(SOFT, a * q))
     return img
 
@@ -255,7 +259,7 @@ def title_cinematic(info, t, dur=5.0):
     """B — cinematic centre card; on a new city the CITY is the hero, otherwise the place."""
     img = blank(); a = env(t, 0, dur, 0.6)
     if a <= 0: return img
-    soft_scrim(img, (W * 0.16, H * 0.26, W * 0.84, H * 0.74), 0.78 * a, 200)
+    soft_scrim(img, (W * 0.16, H * 0.26, W * 0.84, H * (0.80 if info.get('desc') else 0.74)), 0.78 * a, 200)
     d = ImageDraw.Draw(img)
     big = info['city'].upper() if info.get('new_city') else info['place']
     fbig = sf(300 if info.get('new_city') else 200, 'Bold')
@@ -267,9 +271,15 @@ def title_cinematic(info, t, dur=5.0):
     rule = ease_in_out((t - 0.3) / 1.0) * 900
     d.rectangle((W / 2 - rule, cy + 230, W / 2 + rule, cy + 236), fill=rgba(ACCENT, a))
     q = ease_out((t - 0.7) / 0.8)
-    sub = _join(info['place'], info.get('place_local'), sep='   ') if info.get('new_city') else _join(info.get('place_local'), info['city'])
-    fs = local_font(84) if info.get('place_local') else sf(84, 'Medium'); sw = text_w(d, sub, fs)
-    d.text(((W - sw) / 2, cy + 290 + (1 - q) * 30), sub, font=fs, fill=rgba(SOFT, a * q))
+    if info.get('desc'):                                   # place name (new city) + one-line description
+        lines = ([(info['place'], sf(84, 'Semibold'))] if info.get('new_city') else []) + [(info['desc'], sf(62, 'Medium'))]
+    else:
+        sub = _join(info['place'], info.get('place_local'), sep='   ') if info.get('new_city') else _join(info.get('place_local'), info['city'])
+        lines = [(sub, local_font(84) if info.get('place_local') else sf(84, 'Medium'))]
+    yy = cy + 290
+    for txt, fs in lines:
+        while text_w(d, txt, fs) > W * 0.64 and fs.size > 40: fs = sf(fs.size - 4, 'Medium')
+        d.text(((W - text_w(d, txt, fs)) / 2, yy + (1 - q) * 30), txt, font=fs, fill=rgba(SOFT, a * q)); yy += fs.size * 1.35
     top = info.get('city_local') or (info.get('country', '').upper() if info.get('new_city') else '')
     if top:
         fj = local_font(70) if info.get('city_local') else sf(60, 'Semibold'); jw = text_w(d, top, fj, 30)

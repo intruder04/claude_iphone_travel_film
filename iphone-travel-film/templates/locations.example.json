@@ -2,8 +2,8 @@
   "_doc": "Written by Claude after reviewing the footage. Segments are chronological; from/to are file names (inclusive, in capture-time order). weight = share of runtime. title=true shows a location title on the segment's first shot; new_city=true marks a city change (cinematic card). keep_whole=true uses every clip whole (e.g. aerial clips with landmark callouts). dedupe < 0.92 removes more look-alike shots (forests, gardens).",
   "segments": [
     {"id": "arrival", "from": "IMG_0001.MOV", "to": "IMG_0004.MOV", "city": "Lisbon", "place": "Arriving over Lisbon", "keep_whole": true, "title": false, "weight": 0},
-    {"id": "alfama", "from": "IMG_0005.MOV", "to": "IMG_0040.MOV", "city": "Lisbon", "country": "Portugal", "place": "Alfama", "title": true, "new_city": true, "weight": 1.5, "lat": 38.711, "lon": -9.130},
-    {"id": "sintra_forest", "from": "IMG_0041.MOV", "to": "IMG_0090.MOV", "city": "Sintra", "country": "Portugal", "place": "Pena Park", "title": true, "new_city": true, "weight": 1.2, "dedupe": 0.86}
+    {"id": "alfama", "from": "IMG_0005.MOV", "to": "IMG_0040.MOV", "city": "Lisbon", "country": "Portugal", "place": "Alfama", "desc": "Lisbon's oldest district of steep lanes and fado bars", "title": true, "new_city": true, "weight": 1.5, "lat": 38.711, "lon": -9.130},
+    {"id": "sintra_forest", "from": "IMG_0041.MOV", "to": "IMG_0090.MOV", "city": "Sintra", "country": "Portugal", "place": "Pena Park", "desc": "Romantic 19th-century palace gardens in the Sintra hills", "title": true, "new_city": true, "weight": 1.2, "dedupe": 0.86}
   ],
   "exclude": ["IMG_0012.MOV"],
   "must_keep": ["IMG_0033.MOV"],

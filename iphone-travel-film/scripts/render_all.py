@@ -39,7 +39,7 @@ def info_for(seg, shot):
     lat, lon = seg.get('lat'), seg.get('lon')
     coords = f"{abs(lat):.3f}° {'N' if lat >= 0 else 'S'}  {abs(lon):.3f}° {'E' if lon >= 0 else 'W'}" if lat is not None else ''
     return dict(city=seg.get('city', ''), city_local=seg.get('city_local', ''), place=seg.get('place', ''),
-                place_local=seg.get('place_local', ''), country=seg.get('country', ''), area=seg.get('area', ''),
+                place_local=seg.get('place_local', ''), country=seg.get('country', ''), area=seg.get('area', ''), desc=seg.get('desc', ''),
                 date=d.strftime(CFG.get('date_format', '%-d %B %Y')), coords=coords, new_city=seg.get('new_city', False))
 
 FADE = float(CFG.get('city_fade_seconds', 1.0))
