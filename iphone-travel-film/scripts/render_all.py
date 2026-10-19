@@ -1,7 +1,9 @@
 """Step 9 — assemble the full film from meta/edl.json.
 
-  - every shot is rendered to renders/shots/NNN.mov (HLG HEVC 10-bit 60p, PCM audio); finished shots are reused,
-    so after changing one thing delete only the affected shots and re-run
+  - every shot is rendered to renders/shots/NNN.mov (HLG HEVC 10-bit 60p, PCM audio) with a fingerprint of its inputs
+    (clip window, title text, fades, rotation, animal labels, style, graphics code); a cached shot is reused only when
+    the fingerprint matches, so edits can never leave stale titles/labels — just re-run
+  - if intents.json / locations.json are newer than meta/edl.json the plan is rebuilt first
   - a location title only on the first shot of a segment with "title": true; segments with "new_city" get the
     cinematic card (B by default, project.json city_change_style) as a chapter marker
   - city changes: the last shot of a city fades to black with the sound fading out, the first shot of the new city
@@ -25,9 +27,22 @@ W = P()
 STYLE = sys.argv[1] if len(sys.argv) > 1 else CFG.get('title_style', 'A_lower_third')
 JOBS = int(os.environ.get('JOBS', 2))
 OUT = f'{W}/renders'; SH = f'{OUT}/shots'; os.makedirs(SH, exist_ok=True)
+# never render a stale plan: if intents/locations/animals changed after the edit list was built, rebuild it first
+def _fresh():
+    edl = f'{W}/meta/edl.json'; srcs = [f'{W}/{n}' for n in ('intents.json', 'locations.json')]
+    if os.path.exists(edl) and any(os.path.exists(s) and os.path.getmtime(s) > os.path.getmtime(edl) for s in srcs):
+        here = os.path.dirname(os.path.abspath(__file__))
+        if os.path.exists(f'{W}/intents.json'):
+            print('Edit inputs changed since the plan was built → rebuilding edit list and animal labels…')
+            subprocess.run([sys.executable, '-I', os.path.join(here, 'edit_plan.py')], check=True)
+            if os.path.exists(f'{W}/animals.json'):
+                subprocess.run([sys.executable, '-I', os.path.join(here, 'animals.py'), 'track'], check=True)
+_fresh()
 E = json.load(open(f'{W}/meta/edl.json'))
 E['edl'] = [e for e in E['edl'] if e['dur'] >= 2.0]          # no sub-2s flash cuts
-SEGS = {s['id']: s for s in E['segments']}
+# location data is read live from locations.json (the copy inside edl.json can be stale after title/desc edits)
+try: SEGS = {s['id']: s for s in json.load(open(f'{W}/locations.json'))['segments']}
+except (FileNotFoundError, KeyError): SEGS = {s['id']: s for s in E['segments']}
 title_fn = gfx.STYLES[STYLE]
 try: ANIMALS = json.load(open(f'{W}/meta/animal_labels.json'))     # {clip: [label with clip-time start/end, ...]}
 except FileNotFoundError: ANIMALS = {}
@@ -59,7 +74,12 @@ def plan():
 def do(job):
     i, sh, seg, title, fi, fo = job
     out = f'{SH}/{i:03d}.mov'
-    if os.path.exists(out) and os.path.getsize(out) > 0: return out
+    # fingerprint of everything that shapes this shot; a cached shot is reused only if it matches exactly
+    fp = json.dumps(dict(sh={k: sh[k] for k in ('file', 'ss', 'dur', 'portrait', 'hdr')}, title=title, fi=fi, fo=fo,
+                         rot=ROT.get(sh['file'], 0.0), animals=[(a['name'], a['start'], a['end']) for a in ANIMALS.get(sh['file'], [])],
+                         style=STYLE, gfx=os.path.getmtime(gfx.__file__)), sort_keys=True, default=str)
+    if os.path.exists(out) and os.path.getsize(out) > 0 and os.path.exists(out + '.json') and open(out + '.json').read() == fp:
+        return out
     callouts = f"{W}/landmarks/{sh['file']}_callouts.mov"
     s = dict(file=sh['file'], ss=sh['ss'], dur=sh['dur'], portrait=sh['portrait'], hdr=sh['hdr'],
              rotate=-ROT.get(sh['file'], 0.0), fade_in=fi, fade_out=fo)  # ffmpeg rotate is clockwise-positive, PIL ccw
@@ -94,7 +114,7 @@ def do(job):
             return base
         rng = (0, min(sh['dur'], end))
     render(s, out + '.tmp.mov', fn, rng)
-    os.replace(out + '.tmp.mov', out)
+    os.replace(out + '.tmp.mov', out); open(out + '.json', 'w').write(fp)
     return out
 
 if __name__ == '__main__':

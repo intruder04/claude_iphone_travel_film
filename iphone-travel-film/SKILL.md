@@ -88,8 +88,10 @@ S=<skill>/scripts; PY=<skill>/venv/bin/python
 | 11 YouTube text | `$PY $S/youtube_meta.py` | Exact chapters from the edit → `YOUTUBE.md`. Write 3 title options, a short description, 3 hashtags and tags (≤ 500 chars); show them to the user. |
 | 10 Thumbnails | `$PY $S/thumbnails.py pick` → propose text options → `make N N N …` | ≥ 10 thumbnails from the chosen frames and text; show `all_thumbnails.jpg` and let the user choose. |
 
-Re-running a step is cheap: analysis results are cached, and rendered shots in `renders/shots/` are reused.
-After changing one shot's overlay or rotation, delete only `renders/shots/NNN.mov` and re-run step 9.
+Re-running a step is cheap: analysis results are cached. `render_all.py` rebuilds the edit list itself when
+`intents.json` / `locations.json` are newer than it, and re-renders exactly the shots whose inputs changed (each
+shot stores a fingerprint of clip window, title text, fades, rotation, labels, style). Never delete shots by hand.
+**Before telling the user a change is in the film, grab a frame of the re-rendered shot and look at it.**
 
 ### Writing `intents.json` (what every clip is FOR)
 Read `review/intent_*.jpg`. For every clip write one entry (more if a clip holds two different moments):
