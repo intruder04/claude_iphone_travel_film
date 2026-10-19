@@ -23,6 +23,7 @@ from common import CFG, P, jload, edl_shots, grab
 
 TW, TH = 1280, 720
 OUT = P('previews', 'thumbnails'); os.makedirs(OUT, exist_ok=True)
+DELIVER = P('renders', 'thumbnails'); os.makedirs(DELIVER, exist_ok=True)   # finished thumbnails go next to the film
 F = '/System/Library/Fonts/'
 
 def sf(size, weight='Black'):
@@ -361,10 +362,10 @@ def make(nums=None):
     outs = []
     def save(im, name):
         if im is None: print(f'skipped {name}: no clear subject'); return
-        p = os.path.join(OUT, name); im.convert('RGB').save(p, quality=92, optimize=True)
+        p = os.path.join(DELIVER, name); im.convert('RGB').save(p, quality=92, optimize=True)
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
-    for f in glob.glob(os.path.join(OUT, 'thumb_*.jpg')): os.remove(f)
+    for f in glob.glob(os.path.join(DELIVER, 'thumb_*.jpg')): os.remove(f)
     faces = [n for n in CFG.get('thumbnail_face_frames', []) if n in nums]   # frames showing the creator
     scen = [n for n in nums if n not in faces]
     fr = [big[n].resize((TW, TH), Image.LANCZOS) for n in scen]
@@ -396,8 +397,8 @@ def make(nums=None):
     for k, (p, im) in enumerate(zip(outs, ims)):
         ImageDraw.Draw(im).text((10, 320), os.path.basename(p)[6:-4], font=Fn, fill=(255, 255, 0), stroke_width=3, stroke_fill=(0, 0, 0))
         S.paste(im, ((k % 2) * 640, (k // 2) * 360))
-    S.save(os.path.join(OUT, 'all_thumbnails.jpg'), quality=85)
-    print(f'{len(outs)} thumbnails → previews/thumbnails/  (overview: all_thumbnails.jpg)')
+    S.save(os.path.join(DELIVER, 'all_thumbnails.jpg'), quality=85)
+    print(f'{len(outs)} thumbnails → renders/thumbnails/  (overview: all_thumbnails.jpg)')
 
 def add_frames(specs):
     """Add hand-picked frames as candidates: thumbnails.py add CLIP@SECONDS ..."""

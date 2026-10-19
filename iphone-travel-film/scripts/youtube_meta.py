@@ -1,6 +1,6 @@
-"""Step 11 — YouTube upload text: chapters computed from the final edit, plus a YOUTUBE.md skeleton.
+"""Step 11 — YouTube upload text: chapters computed from the final edit, plus a renders/YOUTUBE.md skeleton.
 
-  youtube_meta.py            writes YOUTUBE.md with exact chapter timestamps (from meta/edl.json) and the facts
+  youtube_meta.py            writes renders/YOUTUBE.md (next to the film) with exact chapter timestamps (from meta/edl.json) and the facts
                              Claude needs (route, cities, dates, camera, length, HDR) — Claude then writes the
                              title options, the description and the tags into it (see SKILL.md step 11)
 
@@ -44,8 +44,8 @@ def main():
              f'📍 Route: {" → ".join(cities)}', f'🎥 Shot on {", ".join(models) or "iPhone"} · 4K 60fps · HDR', '',
              'CHAPTERS'] + [f'{stamp(a)} {lab}' for a, lab in ch] + ['', 'TODO: 3 hashtags', '',
              '## Tags (comma-separated, ≤ 500 characters)', 'TODO']
-    open(P('YOUTUBE.md'), 'w').write('\n'.join(lines))
-    print(f'{len(ch)} chapters → YOUTUBE.md (fill in the TODOs)')
+    open(P('renders', 'YOUTUBE.md'), 'w').write('\n'.join(lines))
+    print(f'{len(ch)} chapters → renders/YOUTUBE.md (fill in the TODOs)')
 
 if __name__ == '__main__':
     main()
