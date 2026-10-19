@@ -112,8 +112,17 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
     return out
 
 def preview(src, out, width=1920):
-    """SDR H.264 preview (GPU tonemap) for quick viewing anywhere."""
-    rc = run([FF, '-v', 'error', '-y', *VK, *DEC, '-i', src, '-vf', sdr_gpu(width, width * 9 // 16),
-              '-c:v', 'h264_videotoolbox', '-b:v', '12M', '-c:a', 'aac', '-b:a', '192k', out], 'preview').wait()
-    if rc != 0: raise RuntimeError('preview failed')
+    """SDR H.264 preview (GPU tone-map) for quick viewing anywhere, with a % progress bar."""
+    from tqdm import tqdm
+    dur = float(subprocess.run([FF.replace('ffmpeg', 'ffprobe'), '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src],
+                               capture_output=True, text=True).stdout or 0)
+    p = subprocess.Popen([FF, '-v', 'error', '-y', *VK, *DEC, '-i', src, '-vf', sdr_gpu(width, width * 9 // 16),
+                          '-c:v', 'h264_videotoolbox', '-b:v', '12M', '-c:a', 'aac', '-b:a', '192k', '-progress', 'pipe:1', '-nostats', out],
+                         stdout=subprocess.PIPE, text=True, env=ENV)
+    threading.Thread(target=_watch, args=(p, 'preview'), daemon=True).start()
+    with tqdm(total=round(dur), desc='SDR preview', unit='s') as bar:
+        for line in p.stdout:
+            if line.startswith('out_time_us=') and line.strip()[12:].isdigit():
+                bar.update(min(round(dur), int(line.strip()[12:]) // 1_000_000) - bar.n)
+    if p.wait() != 0: raise RuntimeError('preview failed')
     return out
