@@ -85,6 +85,7 @@ S=<skill>/scripts; PY=<skill>/venv/bin/python
 | 7 Landmarks *(optional)* | `$PY $S/landmarks.py track / check / render` | See `references/landmarks.md`. Check every drift sheet. |
 | 8 Polish | `$PY $S/animals.py …`, `$PY $S/horizon.py …` | Animal labels once per species; level confirmed tilted shots. |
 | 9 Render | `JOBS=2 $PY $S/render_all.py` | Shots → join → loudness −14 LUFS → final MOV → SDR preview → `verify.py`. |
+| 11 YouTube text | `$PY $S/youtube_meta.py` | Exact chapters from the edit → `YOUTUBE.md`. Write 3 title options, a short description, 3 hashtags and tags (≤ 500 chars); show them to the user. |
 | 10 Thumbnails | `$PY $S/thumbnails.py pick` → propose text options → `make N N N …` | ≥ 10 thumbnails from the chosen frames and text; show `all_thumbnails.jpg` and let the user choose. |
 
 Re-running a step is cheap: analysis results are cached, and rendered shots in `renders/shots/` are reused.
@@ -145,6 +146,8 @@ See `references/quality.md` for the full checklist. In short:
 - `references/landmarks.md`: identifying landmarks from the air, anchors, tracking, callout design rules
 - `references/quality.md`: review checklist and the design and accessibility rules for all graphics
 - `references/hdr_youtube.md`: why HLG, how the HDR signalling is preserved, and how it uploads
+- Final deliverables: the HDR film, the SDR preview, the chosen thumbnail, and `YOUTUBE.md` (titles, description
+  with chapters, hashtags, tags). Re-run `youtube_meta.py` after any change to the edit so chapter times stay exact.
 - `references/thumbnails.md`: thumbnail styles and the rules behind them
 - `references/performance.md`: encoder facts and memory pitfalls on Apple Silicon
 - `references/editing.md`: how shots are chosen, cut and ordered
