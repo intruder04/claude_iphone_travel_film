@@ -18,3 +18,12 @@ Rules these follow (current travel-thumbnail conventions):
 - A small rounded badge with a flag emoji gives instant "where" context. Flags are drawn with macOS CoreText,
   because Pillow can't render flag ligatures.
 - Text from `project.json` (`thumbnail_text`, `thumbnail_badge`). Propose options and let the user choose.
+
+## Collage layouts and options
+`collage` (3 slanted panels), `grid4` (2×2), `split` (diagonal halves), `strips` (4 tall strips + title band),
+`mosaic` (big hero + 2 stacked), `polaroid` (tilted photo cards over a blurred hero). Choose them with
+`"thumbnail_styles"` in project.json; every text variant is rendered in every style.
+- `pop` keeps the subject sharp and bright over a dimmed, blurred background, with **no outline or glow** (outlines
+  around people or animals look cheap). Set `"thumbnail_cutout": false` to skip it entirely.
+- Ask what the user does NOT want in thumbnails (e.g. a particular animal or person) and leave those frames out;
+  `thumbnails.py add CLIP@SECONDS` adds hand-picked scenery the ranker missed.

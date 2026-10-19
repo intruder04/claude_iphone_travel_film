@@ -5,6 +5,7 @@ punchy but natural colour, strong subject/background separation, a small locatio
 bottom-right corner (YouTube's duration stamp).
 
   thumbnails.py pick                 rank candidate frames → previews/thumbnails/candidates.jpg (numbered)
+  thumbnails.py add CLIP@T ...       add hand-picked frames to the candidates (e.g. scenery the ranker missed)
   thumbnails.py make [N N ...]       render all styles; order = pop subject (a person or animal), cinematic hero
                                      (wide landmark/scenery), minimal, … (default: best 4)
 
@@ -170,17 +171,14 @@ def subject_crop(big):
     return (crop, m2) if m2 is not None and (np.asarray(m2) > 128).mean() > 0.02 else (None, None)
 
 def style_pop(big, words, badge_text):
-    """Subject lifted from the background (Apple Vision) with a white outline + glow, zoomed in on the right;
-    huge 2-line text on the left. Returns None when there is no clear subject."""
+    """Subject focus: Apple Vision lifts the subject; it stays sharp and bright while the background is dimmed and
+    softly blurred (no outline or glow). Zoomed in on the right, huge 2-line text on the left."""
     src, m = subject_crop(big)
     if src is None: return None
     img = grade(src, 1.1, 1.05, 0.72).filter(ImageFilter.GaussianBlur(2.5)).convert('RGBA')
-    subj = grade(src, 1.28, 1.12, 1.06).convert('RGBA'); subj.putalpha(m)
-    ring = m.filter(ImageFilter.MaxFilter(17)).filter(ImageFilter.GaussianBlur(1.2))
-    glow = Image.new('RGBA', img.size, (255, 255, 255, 0))
-    glow.putalpha(m.filter(ImageFilter.MaxFilter(31)).filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.55)))
-    white = Image.new('RGBA', img.size, (255, 255, 255, 0)); white.putalpha(ring)
-    img.alpha_composite(glow); img.alpha_composite(white); img.alpha_composite(subj)
+    subj = grade(src, 1.25, 1.1, 1.08).convert('RGBA')
+    subj.putalpha(m.filter(ImageFilter.GaussianBlur(2)))      # soft edge, no outline/glow (keeps it natural)
+    img.alpha_composite(subj)
     d = ImageDraw.Draw(img); x0 = 48
     w1, w2 = (words + [''])[:2]
     f1 = fit_font(d, w1, condensed, TW * 0.46, 230); text_stroke(d, (x0, 130), w1, f1, fill=(255, 255, 255), sw=10)
@@ -244,14 +242,93 @@ def style_minimal(src, words, badge_text):
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
+def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190):
+    """Centered headline on a yellow (or dark) rounded block + white second line. Used by the collages."""
+    d = ImageDraw.Draw(img); w = words[0]; cy = TH * 0.42 if cy is None else cy
+    f = fit_font(d, w, condensed, TW * max_w, size); tw = d.textlength(w, font=f)
+    by0 = cy - f.size * 0.55; yb = yellow and 'yellow_bar' in ACC
+    d.rounded_rectangle(((TW - tw) / 2 - 34, by0, (TW + tw) / 2 + 34, by0 + f.size * 1.05), 18, fill=YELLOW if yb else (15, 15, 18))
+    d.text((TW / 2, by0 + f.size * 0.53), w, font=f, fill=(10, 10, 10) if yb else (255, 255, 255), anchor='mm')
+    if len(words) > 1:
+        f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.75, 58)
+        text_stroke(d, (TW / 2, by0 + f.size * 1.05 + 26), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+
+def _panel(img, src, box, border=10):
+    x0, y0, x1, y1 = [int(v) for v in box]
+    img.paste(grade(cover(src, x1 - x0, y1 - y0), 1.22, 1.1).convert('RGBA'), (x0, y0))
+    if border: ImageDraw.Draw(img).rectangle((x0, y0, x1 - 1, y1 - 1), outline=(255, 255, 255), width=border)
+
+def style_grid4(srcs, words, badge_text):
+    """2x2 grid of four places, title block over the centre."""
+    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255))
+    for k, s in enumerate(srcs[:4]): _panel(img, s, ((k % 2) * TW / 2, (k // 2) * TH / 2, (k % 2 + 1) * TW / 2, (k // 2 + 1) * TH / 2), 6)
+    _title_block(img, words, TH * 0.47, size=170)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (30, 26))
+    return img
+
+def style_split(srcs, words, badge_text):
+    """Two halves split by a white diagonal, headline across the seam."""
+    img = Image.new('RGBA', (TW, TH)); a, b = srcs[:2]
+    img.paste(grade(cover(a), 1.22, 1.1).convert('RGBA'))
+    m = Image.new('L', (TW, TH), 0); ImageDraw.Draw(m).polygon([(TW * 0.58, 0), (TW, 0), (TW, TH), (TW * 0.42, TH)], fill=255)
+    img.paste(grade(cover(b), 1.22, 1.1).convert('RGBA'), (0, 0), m)
+    ImageDraw.Draw(img).line([(TW * 0.58, 0), (TW * 0.42, TH)], fill=(255, 255, 255), width=14)
+    _title_block(img, words, TH * 0.70, size=170)
+    route_dots(img, (TW * 0.3, 70), TW * 0.4)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
+    return img
+
+def style_strips(srcs, words, badge_text):
+    """Four tall vertical strips (film-strip look), title band across the middle."""
+    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); n = min(4, len(srcs)); w = TW / n
+    for k, s in enumerate(srcs[:n]): _panel(img, s, (k * w, 0, (k + 1) * w, TH), 6)
+    band = Image.new('RGBA', (TW, int(TH * 0.36)), (0, 0, 0, 150)); img.alpha_composite(band, (0, int(TH * 0.30)))
+    _title_block(img, words, TH * 0.44, size=170)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (30, 26))
+    return img
+
+def style_mosaic(srcs, words, badge_text):
+    """One big hero panel left + two stacked panels right, title on the hero."""
+    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); L = TW * 0.62
+    _panel(img, srcs[0], (0, 0, L, TH), 6); _panel(img, srcs[1], (L, 0, TW, TH / 2), 6); _panel(img, srcs[2], (L, TH / 2, TW, TH), 6)
+    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((0, int(TH * 0.5), int(L), TH), fill=255)
+    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
+    d = ImageDraw.Draw(img); x0 = 48
+    f1 = fit_font(d, words[0], condensed, L * 0.85, 200); text_stroke(d, (x0, TH - 120 - f1.size * 1.6), words[0], f1, sw=9)
+    if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, L * 0.8, 100))
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
+    return img
+
+def style_polaroid(srcs, words, badge_text):
+    """Blurred hero background with 3 tilted photo cards, title below."""
+    img = grade(cover(srcs[0]), 1.1, 1.0, 0.8).filter(ImageFilter.GaussianBlur(14)).convert('RGBA')
+    for k, (s, ang, cx) in enumerate(zip(srcs[1:4], (-8, 3, 9), (0.24, 0.5, 0.76))):
+        cw, ch = 360, 250; card = Image.new('RGBA', (cw + 24, ch + 64), (250, 250, 248, 255))
+        card.paste(grade(cover(s, cw, ch), 1.22, 1.1).convert('RGBA'), (12, 12))
+        card = card.rotate(ang, expand=True, resample=Image.BICUBIC)
+        shd = Image.new('RGBA', card.size, (0, 0, 0, 0)); shd.putalpha(card.getchannel('A').point(lambda v: int(v * 0.5)))
+        x, y = int(TW * cx - card.width / 2), int(TH * 0.12)
+        img.alpha_composite(shd.filter(ImageFilter.GaussianBlur(8)), (x + 8, y + 12)); img.alpha_composite(card, (x, y))
+    _title_block(img, words, TH * 0.72, size=130)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
+    return img
+
+STYLE_FUNCS = {'pop': None, 'cinematic': None, 'collage': None, 'minimal': None, 'grid4': style_grid4, 'split': style_split,
+               'strips': style_strips, 'mosaic': style_mosaic, 'polaroid': style_polaroid}
+
 def make(nums=None):
+    """Render every text variant in every style. project.json:
+      "thumbnail_styles": ["cinematic", "collage", "grid4", "split", "strips", "mosaic", "polaroid", "minimal", "pop"]
+      "thumbnail_cutout": false     → no subject cut-out ('pop') — e.g. when the user doesn't want people highlighted
+    Frame order (candidate numbers): 1st = hero scenery; the rest feed the collages (more = more variety)."""
     cands = json.load(open(os.path.join(OUT, 'candidates.json')))
-    nums = nums or [c['n'] for c in cands[:4]]
+    nums = nums or [c['n'] for c in cands[:6]]
     variants = CFG.get('thumbnail_variants') or [CFG.get('thumbnail_text') or [CFG.get('output_name', 'MY TRIP').replace('_', ' ').upper()]]
     btxt = CFG.get('thumbnail_badge', '')
+    styles = CFG.get('thumbnail_styles') or ['cinematic', 'collage', 'grid4', 'split', 'strips', 'mosaic', 'polaroid', 'minimal', 'pop']
+    if CFG.get('thumbnail_cutout', True) is False: styles = [s for s in styles if s != 'pop']
     big = {c['n']: grab(c['file'], c['t'], 3840, 2160) for c in cands if c['n'] in nums}
-    frames = {n: im.resize((TW, TH), Image.LANCZOS) for n, im in big.items()}
-    a = (nums * 4)[:max(4, len(nums))]      # 1st = subject to lift out, 2nd = hero scenery, 3rd = calm wide, rest = collage
+    fr = [big[n].resize((TW, TH), Image.LANCZOS) for n in nums]
     outs = []
     def save(im, name):
         if im is None: print(f'skipped {name}: no clear subject'); return
@@ -259,27 +336,35 @@ def make(nums=None):
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
     for f in glob.glob(os.path.join(OUT, 'thumb_*.jpg')): os.remove(f)
-    for v, words in enumerate(variants, 1):
-        # rotate source frames between variants so the options differ in picture too
-        r = a[(v - 1) % len(a):] + a[:(v - 1) % len(a)]
-        pop_src = a[0] if v % 2 else (a[3] if len(a) > 3 else a[0])
-        save(style_pop(big[pop_src], words, btxt), f'thumb_{v}a_pop.jpg')
-        save(style_cinematic(frames[r[1]], words, btxt), f'thumb_{v}b_cinematic.jpg')
-        save(style_collage([frames[n] for n in dict.fromkeys(r[1:] + r[:1])][:3], words, btxt), f'thumb_{v}c_collage.jpg')
-        save(style_minimal(frames[r[2]], words, btxt), f'thumb_{v}d_minimal.jpg')
     k = 0
-    while len(outs) < 10 and k < len(a):                       # top up to the minimum of 10
-        save(style_cinematic(frames[a[k]], variants[k % len(variants)], btxt), f'thumb_x{k}_cinematic.jpg'); k += 1
+    for v, words in enumerate(variants, 1):
+        for st in styles:
+            r = fr[k % len(fr):] + fr[:k % len(fr)]; k += 1            # rotate frames so every thumbnail looks different
+            if st == 'pop': im = style_pop(big[nums[k % len(nums)]], words, btxt)
+            elif st == 'cinematic': im = style_cinematic(r[0], words, btxt)
+            elif st == 'minimal': im = style_minimal(r[0], words, btxt)
+            elif st == 'collage': im = style_collage(r[:3], words, btxt)
+            else: im = STYLE_FUNCS[st](r, words, btxt)
+            save(im, f'thumb_{v}_{st}.jpg')
     ims = [Image.open(p).resize((640, 360)) for p in outs]
     S = Image.new('RGB', (1280, 360 * ((len(ims) + 1) // 2)), (20, 20, 20)); Fn = sf(28, 'Bold')
     for k, (p, im) in enumerate(zip(outs, ims)):
         ImageDraw.Draw(im).text((10, 320), os.path.basename(p)[6:-4], font=Fn, fill=(255, 255, 0), stroke_width=3, stroke_fill=(0, 0, 0))
         S.paste(im, ((k % 2) * 640, (k // 2) * 360))
-    S.save(os.path.join(OUT, 'all_thumbnails.jpg'), quality=88)
+    S.save(os.path.join(OUT, 'all_thumbnails.jpg'), quality=85)
     print(f'{len(outs)} thumbnails → previews/thumbnails/  (overview: all_thumbnails.jpg)')
+
+def add_frames(specs):
+    """Add hand-picked frames as candidates: thumbnails.py add CLIP@SECONDS ..."""
+    p = os.path.join(OUT, 'candidates.json'); cands = json.load(open(p)) if os.path.exists(p) else []
+    for sp in specs:
+        f, t = sp.rsplit('@', 1); cands.append(dict(n=max([c['n'] for c in cands] + [-1]) + 1, file=f, t=float(t), seg='', score=0, people=0, shot=-1))
+        print(cands[-1]['n'], f, t)
+    json.dump(cands, open(p, 'w'), indent=1)
 
 if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else ''
     if cmd == 'pick': pick()
     elif cmd == 'make': make([int(x) for x in sys.argv[2:]] or None)
+    elif cmd == 'add': add_frames(sys.argv[2:])
     else: sys.exit(__doc__)
