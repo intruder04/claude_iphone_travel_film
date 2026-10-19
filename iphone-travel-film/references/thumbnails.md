@@ -21,7 +21,9 @@ Rules these follow (current travel-thumbnail conventions):
 
 ## Collage layouts and options
 `collage` (3 slanted panels), `grid4` (2×2), `split` (diagonal halves), `strips` (4 tall strips + title band),
-`mosaic` (big hero + 2 stacked), `polaroid` (tilted photo cards over a blurred hero). Choose them with
+`mosaic` / `mosaic_r` (big hero + 2 stacked, hero left or right), `polaroid` (tilted photo cards over a blurred
+hero). `"thumbnail_extra_mosaics": N` adds N more mosaics per text with different frames. Drop any layout the user
+dislikes from `thumbnail_styles`. Choose them with
 `"thumbnail_styles"` in project.json; every text variant is rendered in every style.
 - `pop` keeps the subject sharp and bright over a dimmed, blurred background, with **no outline or glow** (outlines
   around people or animals look cheap). Set `"thumbnail_cutout": false` to skip it entirely.

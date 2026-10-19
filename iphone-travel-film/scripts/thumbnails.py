@@ -313,7 +313,19 @@ def style_polaroid(srcs, words, badge_text):
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
-STYLE_FUNCS = {'pop': None, 'cinematic': None, 'collage': None, 'minimal': None, 'grid4': style_grid4, 'split': style_split,
+def style_mosaic_r(srcs, words, badge_text):
+    """Mirror of mosaic: two stacked panels left, big hero right, title on the hero."""
+    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); L = TW * 0.38
+    _panel(img, srcs[0], (L, 0, TW, TH), 6); _panel(img, srcs[1], (0, 0, L, TH / 2), 6); _panel(img, srcs[2], (0, TH / 2, L, TH), 6)
+    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((int(L), int(TH * 0.5), TW, TH), fill=255)
+    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
+    d = ImageDraw.Draw(img); x0 = int(L + 48); w = TW - L
+    f1 = fit_font(d, words[0], condensed, w * 0.85, 200); text_stroke(d, (x0, TH - 120 - f1.size * 1.6), words[0], f1, sw=9)
+    if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, w * 0.8, 100))
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(L) + 30, 36))
+    return img
+
+STYLE_FUNCS = {'mosaic_r': style_mosaic_r, 'pop': None, 'cinematic': None, 'collage': None, 'minimal': None, 'grid4': style_grid4, 'split': style_split,
                'strips': style_strips, 'mosaic': style_mosaic, 'polaroid': style_polaroid}
 
 def make(nums=None):
@@ -346,6 +358,9 @@ def make(nums=None):
             elif st == 'collage': im = style_collage(r[:3], words, btxt)
             else: im = STYLE_FUNCS[st](r, words, btxt)
             save(im, f'thumb_{v}_{st}.jpg')
+        for j in range(int(CFG.get('thumbnail_extra_mosaics', 0))):     # more of the favourite layout, new frames
+            r = fr[(k + 3 * j + 5) % len(fr):] + fr[:(k + 3 * j + 5) % len(fr)]
+            save((style_mosaic if j % 2 == 0 else style_mosaic_r)(r, words, btxt), f'thumb_{v}_mosaic_x{j + 1}.jpg')
     ims = [Image.open(p).resize((640, 360)) for p in outs]
     S = Image.new('RGB', (1280, 360 * ((len(ims) + 1) // 2)), (20, 20, 20)); Fn = sf(28, 'Bold')
     for k, (p, im) in enumerate(zip(outs, ims)):

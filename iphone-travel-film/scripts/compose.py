@@ -93,8 +93,11 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
     if fo: post.append(f'fade=t=out:st={dur - fo:.3f}:d={fo}')
     post.append('setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc:range=tv')
     fc += f';[{last}]' + ','.join(post) + '[vo]'
-    afi, afo = max(fi, 0.12), max(fo, 0.12)
-    af = [f'afade=t=in:st=0:d={afi}', f'afade=t=out:st={dur - afo:.3f}:d={afo}']
+    # audio: real fades only where the picture fades (film start/end, city changes); every other cut gets a 15 ms
+    # de-click so the waveform doesn't jump — long fades on every cut make the sound dip audibly at each shot change
+    DECLICK = 0.015
+    afi, afo = (fi if fi else DECLICK), (fo if fo else DECLICK)
+    af = [f'afade=t=in:st=0:d={afi}:curve=qsin', f'afade=t=out:st={dur - afo:.3f}:d={afo}:curve=qsin']
     if seg.get('volume', 1.0) != 1.0: af.append(f"volume={seg['volume']}")
     ai = 2 if ov else 1
     if seg.get('audio', True): inputs += ['-vn', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-i', os.path.join(SRC, seg['file'])]

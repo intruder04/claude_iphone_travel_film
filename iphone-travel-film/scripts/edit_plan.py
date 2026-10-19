@@ -11,6 +11,8 @@ Cutting rules (all measured, nothing guessed):
   * never cut through a word: cuts move outside spoken words (meta/speech word timestamps)
   * length follows the content, not a quota: highlights up to 12 s, selfies/speech up to 18 s, good shots 7 s,
     fillers 4.5 s; a window is only trimmed when it is longer than that (best-scoring part kept)
+  * an intent with "exact": true keeps its window untouched (no trimming/snapping) — for moments whose build-up
+    matters, e.g. lights standing still before they start to move
   * a segment may set "max_shot" (seconds) to keep the pace up in places with many highlights
   * aerial "plane" windows from locations.json are used as listed (steady holds only, zooms excluded)
 Order: segments in locations.json order; inside a segment, capture time.
@@ -97,7 +99,10 @@ def main():
         r = IDX[o['file']]; words = SP.get(o['file'], {}).get('words', [])
         w = o['win'] or [0.3, r['dur'] - 0.3]
         has_speech = o['file'] in dual or any(w[0] <= ws <= w[1] for ws, _, _ in words)
-        ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'))
+        if o.get('exact'):                                  # Claude/user set the exact moment (e.g. a build-up that
+            ss, dd = round(w[0], 2), round(min(w[1], r['dur'] - 0.05) - w[0], 2)   # must not be trimmed): keep as is
+        else:
+            ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'))
         if dd < MIN_LEN: continue
         edl.append(dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
                         hdr=r['hdr'], tag='dual-selfie' if o['file'] in dual else '', note=o.get('note', '')))

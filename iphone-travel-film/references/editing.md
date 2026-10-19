@@ -36,3 +36,12 @@ travel edits drag: five takes of the same view become one.
 ## Aerial openings
 Use only steady holds: establishing wide shot first, then the landmarks, each with tracked 📍 callouts. Never
 use the zoom-in or zoom-out parts.
+
+## Sound at cuts
+Only fade audio where the picture fades (film start/end, city changes). Every other cut gets a ~15 ms de-click fade:
+long fades on every cut make the sound dip audibly at each shot change.
+
+## Build-ups
+Some moments only work with their build-up (lights standing still before they race, a crossing before the train,
+walking before a crowd comes into view). Give those intents `"exact": true` with the full window so they are not
+trimmed to the "best" seconds. When in doubt, include the second before the change.
