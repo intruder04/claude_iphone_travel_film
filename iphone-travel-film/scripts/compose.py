@@ -70,7 +70,7 @@ def render_overlay(fn, t0, t1, out):
     if p.wait() != 0: raise RuntimeError('overlay encode failed')
     return out
 
-def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
+def render(seg, out, overlay_fn=None, ov_range=None, bitrate='60M'):
     """seg: dict(file, ss, dur, portrait, hdr, fade_in, fade_out, audio, volume)."""
     ss, dur = seg['ss'], seg['dur']; n = int(round(dur * FPS))
     fc = video_chain(seg['portrait'], seg['hdr'], seg.get('rotate', 0.0))
@@ -104,7 +104,9 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='70M'):
     cmd = [FF, '-v', 'error', '-y', *inputs, '-filter_complex', fc, '-map', '[vo]', '-frames:v', str(n)]
     if seg.get('audio', True):
         cmd += ['-map', f'{ai}:a:0', '-af', ','.join(af) + ',aresample=48000,apad', '-ac', '2', '-t', f'{dur:.3f}', '-c:a', 'pcm_s16le']
-    cmd += ['-c:v', 'hevc_videotoolbox', '-prio_speed', '1', '-profile:v', 'main10', '-pix_fmt', 'p010le', '-b:v', bitrate, '-maxrate', '120M',
+    # YouTube: keep the stream at a common HEVC level (5.1/5.2). VideoToolbox's default short GOP + 120 Mb/s peaks give
+    # level 6.1, which YouTube accepted but never turned into 4K/HDR. 2 s GOP + ≤80 Mb/s peaks → level 5.2.
+    cmd += ['-c:v', 'hevc_videotoolbox', '-prio_speed', '1', '-profile:v', 'main10', '-pix_fmt', 'p010le', '-b:v', bitrate, '-maxrate', '80M', '-g', str(FPS * 2),
             '-tag:v', 'hvc1', *HLG_TAGS, '-r', str(FPS), out]
     rc = run(cmd, 'compose ' + os.path.basename(out)).wait()
     if ov: os.remove(ov)

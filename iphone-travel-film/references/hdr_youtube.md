@@ -19,3 +19,10 @@ The pipeline keeps HLG end to end:
 badge appears in the quality menu once it's done; SDR viewers get YouTube's own tone-mapped version.
 
 The SDR preview is made with libplacebo BT.2390 tone-mapping on the GPU (Vulkan → MoltenVK → Metal).
+
+## Lesson learned: HEVC level
+A film encoded by VideoToolbox with its default very short GOP (a keyframe every 0.2 s) and 120 Mb/s peaks was
+labelled HEVC level 6.1. YouTube accepted the upload but only ever offered up to 1440p, with no HDR. The same footage
+re-encoded at level 5.1/5.2 (keyframe every 2 s, ≤ 80 Mb/s peaks) got 4K HDR. The renderer now uses `-g 120 -maxrate 80M`,
+and `verify.py` fails any file above level 5.2 or with more than one keyframe per second. If an upload doesn't get HDR,
+upload a 60-second excerpt first: short clips process in minutes.

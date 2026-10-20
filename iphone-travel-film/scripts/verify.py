@@ -16,6 +16,10 @@ def main(f):
     print(f'{f}')
     chk('codec', v['codec_name'] == 'hevc' and v.get('pix_fmt', '').endswith('10le'), f"{v['codec_name']} {v.get('profile')} {v.get('pix_fmt')}")
     chk('resolution / fps', True, f"{v['width']}x{v['height']} @ {v['r_frame_rate']}")
+    lvl = int(v.get('level', 0)); chk('HEVC level ≤ 5.2 (YouTube 4K/HDR path)', 0 < lvl <= 156, f'{lvl / 30:.1f}')
+    pk = subprocess.run([FFPROBE, '-v', 'error', '-select_streams', 'v:0', '-read_intervals', '%+60', '-show_entries', 'packet=flags',
+                         '-of', 'csv=p=0', f], capture_output=True, text=True).stdout.split()
+    kf = sum('K' in x for x in pk); chk('keyframe interval ≥ 1 s', kf <= 61, f'{kf} keyframes in the first 60 s')
     chk('container primaries', v.get('color_primaries') == 'bt2020', v.get('color_primaries'))
     chk('container transfer (HLG)', v.get('color_transfer') == 'arib-std-b67', v.get('color_transfer'))
     chk('container matrix', v.get('color_space') == 'bt2020nc', v.get('color_space'))
