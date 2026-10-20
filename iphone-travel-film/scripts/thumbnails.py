@@ -357,7 +357,7 @@ def style_mosaic_r(srcs, words, badge_text):
 # collages; a close-up genuine face + a recognisable location "hero" is the classic travel combo; 1–2 huge words max,
 # readable on a phone; strong light/dark contrast; and a text-free variant is worth A/B testing (YouTube Test & Compare).
 
-def style_face_hero(face_big, hero, words, badge_text):
+def style_face_hero(face_big, hero, words, badge_text, glow=False):
     """Location hero full-bleed, the creator's face cut out (no outline) large in the lower corner, one huge word."""
     img = grade(cover(hero), 1.2, 1.12).convert('RGBA')
     g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, 0, int(TW * 0.6), TH), fill=255)
@@ -368,7 +368,12 @@ def style_face_hero(face_big, hero, words, badge_text):
         bb = m.getbbox()
         if bb:
             cut = cut.crop(bb); k = TH * 0.92 / cut.height; cut = cut.resize((int(cut.width * k), int(cut.height * k)), Image.LANCZOS)
-            img.alpha_composite(cut, (TW - cut.width + int(cut.width * 0.06), TH - cut.height))
+            pos = (TW - cut.width + int(cut.width * 0.06), TH - cut.height)
+            if glow:                                   # soft light halo (on request) — no hard outline
+                a = Image.new('L', (TW, TH), 0); a.paste(cut.getchannel('A'), pos)
+                halo = a.filter(ImageFilter.MaxFilter(21)).filter(ImageFilter.GaussianBlur(28)).point(lambda v: min(255, int(v * 1.1)))
+                hl = Image.new('RGBA', (TW, TH), (255, 245, 225, 0)); hl.putalpha(halo); img.alpha_composite(hl)
+            img.alpha_composite(cut, pos)
     d = ImageDraw.Draw(img)
     f = fit_font(d, words[0], condensed, TW * 0.5, 260); text_stroke(d, (56, TH * 0.5 - f.size * 0.6), words[0], f, sw=10)
     if len(words) > 1: second_line(d, 60, TH * 0.5 + f.size * 0.45, words[1].upper(), fit_font(d, words[1].upper(), condensed, TW * 0.45, 90))
