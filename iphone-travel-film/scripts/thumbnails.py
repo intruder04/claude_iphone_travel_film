@@ -351,6 +351,55 @@ def style_mosaic_r(srcs, words, badge_text):
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(L) + 30, 36))
     return img
 
+
+# ------------------------------------------------------------------ 2026 trend styles
+# Findings (creator guides 2025–26): cleaner compositions with one focal point and negative space are replacing busy
+# collages; a close-up genuine face + a recognisable location "hero" is the classic travel combo; 1–2 huge words max,
+# readable on a phone; strong light/dark contrast; and a text-free variant is worth A/B testing (YouTube Test & Compare).
+
+def style_face_hero(face_big, hero, words, badge_text):
+    """Location hero full-bleed, the creator's face cut out (no outline) large in the lower corner, one huge word."""
+    img = grade(cover(hero), 1.2, 1.12).convert('RGBA')
+    g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, 0, int(TW * 0.6), TH), fill=255)
+    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.filter(ImageFilter.GaussianBlur(160)).point(lambda v: int(v * 0.55))); img.alpha_composite(sh)
+    src, m = subject_crop(face_big)
+    if src is not None:
+        cut = grade(src, 1.15, 1.05, 1.06).convert('RGBA'); cut.putalpha(m.filter(ImageFilter.GaussianBlur(2)))
+        bb = m.getbbox()
+        if bb:
+            cut = cut.crop(bb); k = TH * 0.92 / cut.height; cut = cut.resize((int(cut.width * k), int(cut.height * k)), Image.LANCZOS)
+            img.alpha_composite(cut, (TW - cut.width + int(cut.width * 0.06), TH - cut.height))
+    d = ImageDraw.Draw(img)
+    f = fit_font(d, words[0], condensed, TW * 0.5, 260); text_stroke(d, (56, TH * 0.5 - f.size * 0.6), words[0], f, sw=10)
+    if len(words) > 1: second_line(d, 60, TH * 0.5 + f.size * 0.45, words[1].upper(), fit_font(d, words[1].upper(), condensed, TW * 0.45, 90))
+    return img
+
+def style_clean(hero, words, badge_text):
+    """Minimal: one iconic image, lots of space, a single huge word, nothing else."""
+    img = grade(cover(hero), 1.15, 1.12).convert('RGBA')
+    g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.55), TW, TH), fill=255)
+    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.filter(ImageFilter.GaussianBlur(120)).point(lambda v: int(v * 0.6))); img.alpha_composite(sh)
+    d = ImageDraw.Draw(img); f = fit_font(d, words[0], lambda s_: sf(s_, 'Black'), TW * 0.8, 280)
+    shadow_text(img, (TW / 2, TH * 0.9), words[0], f, anchor='ms', blur=18, alpha=180)
+    return img
+
+def style_versus(a, b, la, lb, words, badge_text):
+    """Two-city contrast: left vs right halves, each labelled, headline across the seam."""
+    img = Image.new('RGBA', (TW, TH)); img.paste(grade(cover(a, TW // 2, TH), 1.2, 1.1).convert('RGBA'), (0, 0))
+    img.paste(grade(cover(b, TW // 2, TH), 1.2, 1.1).convert('RGBA'), (TW // 2, 0))
+    d = ImageDraw.Draw(img); d.rectangle((TW // 2 - 5, 0, TW // 2 + 5, TH), fill=(255, 255, 255))
+    for txt, cx in ((la, TW / 4), (lb, TW * 3 / 4)):
+        boxed_text(d, cx, TH - 120, txt, sf(56, 'Heavy'), (15, 15, 18), (255, 255, 255), radius=14, center=True)
+    boxed_text(d, TW / 2, 60, words[0], condensed(150), YELLOW, (10, 10, 10), radius=18, center=True)
+    return img
+
+def style_textfree(hero, words, badge_text):
+    """No text at all (the title does the talking) — strong grade + vignette. Good A/B test partner."""
+    img = grade(cover(hero), 1.25, 1.15).convert('RGBA')
+    v = Image.new('L', (TW, TH), 255); ImageDraw.Draw(v).ellipse((-TW * 0.15, -TH * 0.2, TW * 1.15, TH * 1.2), fill=0)
+    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(v.filter(ImageFilter.GaussianBlur(140)).point(lambda v_: int(v_ * 0.55))); img.alpha_composite(sh)
+    return img
+
 STYLE_FUNCS = {'mosaic_r': style_mosaic_r, 'pop': None, 'cinematic': None, 'collage': None, 'minimal': None, 'grid4': style_grid4, 'split': style_split,
                'strips': style_strips, 'mosaic': style_mosaic, 'polaroid': style_polaroid}
 

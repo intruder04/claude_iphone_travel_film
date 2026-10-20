@@ -29,3 +29,12 @@ dislikes from `thumbnail_styles`. Choose them with
   around people or animals look cheap). Set `"thumbnail_cutout": false` to skip it entirely.
 - Ask what the user does NOT want in thumbnails (e.g. a particular animal or person) and leave those frames out;
   `thumbnails.py add CLIP@SECONDS` adds hand-picked scenery the ranker missed.
+
+## Trend styles (research, 2025–26 creator guides)
+- Cleaner compositions with one focal point and negative space are replacing busy, text-heavy thumbnails.
+- Travel classic: a close-up, genuine face plus a recognisable location "hero" shot.
+- 1–2 huge words, readable on a phone; strong light/dark contrast.
+- A text-free version is worth A/B testing with YouTube "Test & Compare" (up to 3 thumbnails).
+Styles in `thumbnails.py`: `style_face_hero` (hero full-bleed + face cut-out, no outline), `style_clean` (one image,
+one huge word), `style_versus` (two cities/moods side by side), `style_textfree`. Offer a few of each and suggest
+testing 3 very different ones (e.g. face_hero, clean, collage) against each other.
