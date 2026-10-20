@@ -357,7 +357,7 @@ def style_mosaic_r(srcs, words, badge_text):
 # collages; a close-up genuine face + a recognisable location "hero" is the classic travel combo; 1–2 huge words max,
 # readable on a phone; strong light/dark contrast; and a text-free variant is worth A/B testing (YouTube Test & Compare).
 
-def style_face_hero(face_big, hero, words, badge_text, glow=False):
+def style_face_hero(face_big, hero, words, badge_text, glow=False, neon=None):
     """Location hero full-bleed, the creator's face cut out (no outline) large in the lower corner, one huge word."""
     img = grade(cover(hero), 1.2, 1.12).convert('RGBA')
     g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, 0, int(TW * 0.6), TH), fill=255)
@@ -373,6 +373,14 @@ def style_face_hero(face_big, hero, words, badge_text, glow=False):
                 a = Image.new('L', (TW, TH), 0); a.paste(cut.getchannel('A'), pos)
                 halo = a.filter(ImageFilter.MaxFilter(21)).filter(ImageFilter.GaussianBlur(28)).point(lambda v: min(255, int(v * 1.1)))
                 hl = Image.new('RGBA', (TW, TH), (255, 245, 225, 0)); hl.putalpha(halo); img.alpha_composite(hl)
+            if neon:                                   # neon tube outline: wide coloured bloom + bright thin core
+                a = Image.new('L', (TW, TH), 0); a.paste(cut.getchannel('A').point(lambda v: 255 if v > 128 else 0), pos)
+                edge = Image.fromarray((np.asarray(a.filter(ImageFilter.MaxFilter(11))).astype(int) - np.asarray(a.filter(ImageFilter.MaxFilter(3))).astype(int)).clip(0, 255).astype(np.uint8))
+                for blur, gain in ((40, 1.0), (16, 1.6), (5, 2.2)):
+                    lay = Image.new('RGBA', (TW, TH), tuple(neon) + (0,)); lay.putalpha(edge.filter(ImageFilter.GaussianBlur(blur)).point(lambda v, g=gain: min(255, int(v * g))))
+                    img.alpha_composite(lay)
+                core = Image.new('RGBA', (TW, TH), (255, 255, 255, 0)); core.putalpha(edge.filter(ImageFilter.GaussianBlur(1)).point(lambda v: int(v * 0.85)))
+                img.alpha_composite(core)
             img.alpha_composite(cut, pos)
     d = ImageDraw.Draw(img)
     f = fit_font(d, words[0], condensed, TW * 0.5, 260); text_stroke(d, (56, TH * 0.5 - f.size * 0.6), words[0], f, sw=10)
