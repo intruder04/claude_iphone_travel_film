@@ -12,7 +12,7 @@ Decode/encode use the M4 media engines (VideoToolbox). Benchmarks on this Mac (4
 import os, subprocess, sys, threading, time, tempfile
 import psutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import FF, ENV, VK, DEC, SRC, src, P, HLG_TAGS, sdr_gpu
+from common import FF, FFPROBE, ENV, VK, DEC, SRC, src, P, HLG_TAGS, sdr_gpu
 from gfx import W, H, blank
 
 TMP = P('tmp')
@@ -116,7 +116,7 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='60M'):
 def preview(src, out, width=1920):
     """SDR H.264 preview (GPU tone-map) for quick viewing anywhere, with a % progress bar."""
     from tqdm import tqdm
-    dur = float(subprocess.run([FF.replace('ffmpeg', 'ffprobe'), '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src],
+    dur = float(subprocess.run([FFPROBE, '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src],
                                capture_output=True, text=True).stdout or 0)
     p = subprocess.Popen([FF, '-v', 'error', '-y', *VK, *DEC, '-i', src, '-vf', sdr_gpu(width, width * 9 // 16),
                           '-c:v', 'h264_videotoolbox', '-b:v', '12M', '-c:a', 'aac', '-b:a', '192k', '-progress', 'pipe:1', '-nostats', out],

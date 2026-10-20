@@ -142,7 +142,8 @@ def _render_one(clip):
     r = {x['file']: x for x in jload('meta/index.json')}[clip]
     fn = _overlay_for(clip); out = P('landmarks', f'{clip}_callouts.mov')
     render(dict(file=clip, ss=0, dur=r['dur'] - 0.05, portrait=False, hdr=r['hdr']), out, fn)
-    preview(out, out.replace('.mov', '_preview.mp4'))
+    from common import CFG
+    if CFG.get('sdr_preview', False): preview(out, out.replace('.mov', '_preview.mp4'))   # only when asked
     return f'{clip}: frames where labels could not avoid overlapping = {fn.co.overlaps}'
 
 def render_all(clips):
