@@ -127,7 +127,8 @@ if __name__ == '__main__':
           f'{sum(1 for j in jobs if j[4] and j[0])} city changes')
     with ThreadPoolExecutor(JOBS) as ex:
         futs = [ex.submit(do, j) for j in jobs]
-        for f in tqdm(as_completed(futs), total=len(futs), desc='Rendering shots (cached ones are instant)', unit='shot'):
+        for f in tqdm(as_completed(futs), total=len(futs), desc='Shots', unit='shot', dynamic_ncols=True,
+                      bar_format='{desc} {percentage:3.0f}% {n}/{total} | left {remaining} | done {elapsed}'):
             f.result()
         paths = [f.result() for f in futs]
     lst = f'{OUT}/concat.txt'
