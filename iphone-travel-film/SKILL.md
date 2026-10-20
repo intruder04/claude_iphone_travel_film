@@ -122,6 +122,8 @@ places) with what you see on the sheets:
   `"title": false`.
 - Give every titled segment a `desc`: one short line (≈ 40–65 characters) saying what the place IS, e.g.
   "Temple founded in 778, its wooden stage built without nails". Facts only, no superlatives you can't back up.
+- `title_shot: "IMG_….MOV"` puts the segment's title on the shot where the place is actually recognisable
+  (the first torii, the river) instead of on an approach/transit shot.
 - Set `new_city: true` on the first segment in each new city. Add `country`, `city_local`/`place_local` when
   local script is wanted, and `lat`/`lon` for the map-pin style.
 - `weight` sets the share of runtime. Give big moments more, and repetitive walks (forest, endless gates)

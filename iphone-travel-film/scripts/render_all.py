@@ -33,7 +33,7 @@ def _fresh():
     if os.path.exists(edl) and any(os.path.exists(s) and os.path.getmtime(s) > os.path.getmtime(edl) for s in srcs):
         here = os.path.dirname(os.path.abspath(__file__))
         if os.path.exists(f'{W}/intents.json'):
-            print('Edit inputs changed since the plan was built → rebuilding edit list and animal labels…')
+            print('Step 1/3: edit inputs changed → rebuilding edit list and re-tracking animal labels (~2 min, no % bar)…')
             subprocess.run([sys.executable, '-I', os.path.join(here, 'edit_plan.py')], check=True)
             if os.path.exists(f'{W}/animals.json'):
                 subprocess.run([sys.executable, '-I', os.path.join(here, 'animals.py'), 'track'], check=True)
@@ -64,7 +64,8 @@ def plan():
     city = [SEGS[e['seg']].get('city', '') for e in edl]
     for i, sh in enumerate(edl):
         seg = SEGS[sh['seg']]; title = None
-        if seg.get('title') and sh['seg'] not in seen and sh['dur'] >= 3.5:
+        want = seg.get('title_shot')                     # optional: the clip that should carry the title
+        if seg.get('title') and sh['seg'] not in seen and sh['dur'] >= 3.5 and (not want or sh['file'] == want):
             title = info_for(seg, sh); seen.add(sh['seg'])
         fi = 0.8 if i == 0 else (FADE if city[i] != city[i - 1] else 0)
         fo = 2.0 if i == len(edl) - 1 else (FADE if city[i] != city[i + 1] else 0)

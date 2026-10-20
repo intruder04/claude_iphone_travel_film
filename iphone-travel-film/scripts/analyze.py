@@ -21,7 +21,8 @@ def run(r):
     fc = (f"[0:v]fps=10,scale={'432:768' if r['portrait'] else '768:432'}:flags=bilinear,{tm},split=2[a][b];"
           f"[a]select='not(mod(n\\,5))'[a2];[b]scale={pw}:{ph},format=gray[b2]")
     raw = subprocess.run([FF, '-v', 'error', '-hwaccel', 'videotoolbox', *src(f), '-filter_complex', fc,
-                          '-map', '[a2]', '-q:v', '4', f'{out}/%04d.jpg', '-map', '[b2]', '-f', 'rawvideo', '-'],
+                          '-map', '[a2]', '-fps_mode', 'vfr', '-q:v', '4', f'{out}/%04d.jpg',   # vfr: keep only the 2 fps selection
+                          '-map', '[b2]', '-f', 'rawvideo', '-'],
                          capture_output=True).stdout
     fr = np.frombuffer(raw, np.uint8)[: (len(raw) // (pw * ph)) * pw * ph].reshape(-1, ph, pw)
     sharp = [float(cv2.Laplacian(x, cv2.CV_64F).var()) for x in fr]
