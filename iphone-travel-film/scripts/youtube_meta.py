@@ -39,7 +39,8 @@ def main():
     lines = ['# YouTube upload text', '',
              f'<!-- facts for Claude: {days} days ({d0} → {d1}); route {" → ".join(cities)}; camera {", ".join(models)}; '
              f'film {total / 60:.1f} min, 4K 60fps HLG HDR; music: {"yes" if CFG.get("music") else "none (original sound)"} -->', '',
-             '## Title options', '- TODO (3 options, ≤ 70 characters, place names + "4K HDR"; no clickbait)', '',
+             '## Title options', '- TODO: 10+ options, ≤ 70 chars, grouped: search-first (place + 4K HDR up front), story/feeling, '
+             'specific hook (a concrete moment from the film), calm/ambient if there is no narration/music. Recommend one + a test partner.', '',
              '## Description', 'TODO: 2–3 sentence summary of the trip and what the viewer will see.', '',
              f'📍 Route: {" → ".join(cities)}', f'🎥 Shot on {", ".join(models) or "iPhone"} · 4K 60fps · HDR', '',
              'CHAPTERS'] + [f'{stamp(a)} {lab}' for a, lab in ch] + ['', 'TODO: 3 hashtags', '',

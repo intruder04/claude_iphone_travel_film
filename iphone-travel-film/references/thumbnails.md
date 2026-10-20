@@ -38,3 +38,9 @@ dislikes from `thumbnail_styles`. Choose them with
 Styles in `thumbnails.py`: `style_face_hero` (hero full-bleed + face cut-out, no outline), `style_clean` (one image,
 one huge word), `style_versus` (two cities/moods side by side), `style_textfree`. Offer a few of each and suggest
 testing 3 very different ones (e.g. face_hero, clean, collage) against each other.
+
+## Video titles
+Front-load searchable words (country, cities, "4K HDR") in the first ~40 characters (phones truncate). Offer 10+
+options in four groups: search-first (the pattern of high-view 4K travel channels: place + format), story/feeling,
+a specific hook taken from a real moment in the film, and calm/ambient when there is no narration or music.
+No clickbait the film doesn't deliver. Suggest one main title and a contrasting one to A/B test.
