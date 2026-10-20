@@ -58,6 +58,7 @@ def info_for(seg, shot):
                 date=d.strftime(CFG.get('date_format', '%-d %B %Y')), coords=coords, new_city=seg.get('new_city', False))
 
 FADE = float(CFG.get('city_fade_seconds', 1.0))
+ENC_VERSION = 'vt-hevc-60M-80M-g120'   # part of every shot fingerprint: changing encoder settings re-renders all shots
 
 def plan():
     jobs, seen = [], set(); edl = E['edl']
@@ -78,7 +79,7 @@ def do(job):
     # shots elsewhere never invalidates it — only shots whose own inputs changed are rendered again
     fp = json.dumps(dict(sh={k: sh[k] for k in ('file', 'ss', 'dur', 'portrait', 'hdr')}, title=title, fi=fi, fo=fo,
                          rot=ROT.get(sh['file'], 0.0), animals=[(a['name'], a['start'], a['end']) for a in ANIMALS.get(sh['file'], [])],
-                         style=STYLE, gfx=os.path.getmtime(gfx.__file__)), sort_keys=True, default=str)
+                         style=STYLE, gfx=os.path.getmtime(gfx.__file__), enc=ENC_VERSION), sort_keys=True, default=str)
     import hashlib
     out = f"{SH}/{hashlib.sha1(fp.encode()).hexdigest()[:16]}.mov"
     if os.path.exists(out) and os.path.getsize(out) > 0:
@@ -139,7 +140,7 @@ if __name__ == '__main__':
     m = json.loads(r[r.rindex('{'):r.rindex('}') + 1])
     ln = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}"
           f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
-    final = f"{OUT}/{CFG.get('output_name', 'Travel_Film')}_HDR.mov"
+    final = f"{OUT}/{CFG.get('output_name', 'Travel_Film')}_HDR.mp4"   # MP4, not MOV: YouTube ignored HDR in MOV (nclc colr)
     print('Final mux (video stream copied, audio normalised to -14 LUFS)…')
     run([FF, '-v', 'error', '-y', '-i', f'{OUT}/joined.mov', '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-tag:v', 'hvc1',
          '-af', ln + ',aresample=48000', '-c:a', 'aac', '-b:a', '320k', *HLG_TAGS, '-movflags', '+faststart', final], 'final').wait()

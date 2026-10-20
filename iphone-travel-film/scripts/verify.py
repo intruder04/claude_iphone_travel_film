@@ -27,6 +27,8 @@ def main(f):
                         capture_output=True, text=True).stderr
     vui = {k: int(m.group(1)) for k in ('colour_primaries', 'transfer_characteristics', 'matrix_coefficients')
            for m in [re.search(k + r'\s+\d+\s+=\s+(\d+)', tr)] if m}
+    head = open(f, 'rb').read(16_000_000); i = head.find(b'colr')
+    chk('container colr = nclx (MP4; YouTube ignores HDR in MOV/nclc)', i > 0 and head[i + 4:i + 8] == b'nclx', head[i + 4:i + 8].decode(errors='replace') if i > 0 else 'missing')
     chk('bitstream VUI 9/18/9', vui == {'colour_primaries': 9, 'transfer_characteristics': 18, 'matrix_coefficients': 9}, vui)
     chk('audio', a and a[0]['codec_name'] == 'aac', f"{a[0]['codec_name']} {a[0].get('sample_rate')} Hz {a[0].get('channels')} ch" if a else 'none')
     d = float(p['format']['duration']); chk('duration', True, f'{d // 60:.0f} min {d % 60:.0f} s, {int(p["format"]["bit_rate"]) / 1e6:.0f} Mb/s')

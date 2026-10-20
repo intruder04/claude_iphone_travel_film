@@ -20,9 +20,15 @@ badge appears in the quality menu once it's done; SDR viewers get YouTube's own 
 
 The SDR preview is made with libplacebo BT.2390 tone-mapping on the GPU (Vulkan → MoltenVK → Metal).
 
-## Lesson learned: HEVC level
+## Lesson learned: container + level (tested with 60 s uploads)
 A film encoded by VideoToolbox with its default very short GOP (a keyframe every 0.2 s) and 120 Mb/s peaks was
 labelled HEVC level 6.1. YouTube accepted the upload but only ever offered up to 1440p, with no HDR. The same footage
 re-encoded at level 5.1/5.2 (keyframe every 2 s, ≤ 80 Mb/s peaks) got 4K HDR. The renderer now uses `-g 120 -maxrate 80M`,
 and `verify.py` fails any file above level 5.2 or with more than one keyframe per second. If an upload doesn't get HDR,
 upload a 60-second excerpt first: short clips process in minutes.
+
+**Result of the A/B uploads:** same HEVC stream, MOV → no HDR; MP4 → HDR. The QuickTime `colr` box in MOV is type
+`nclc`; MP4 gets `nclx`, which YouTube reads. The x265 MP4 also worked. So: **always deliver MP4**. VideoToolbox's
+level follows the requested bitrate: ≤ 60 Mb/s (with `-maxrate 80M -g 120`) gives level 5.2; higher requests give 6.1,
+which is untested on YouTube, so the renderer stays at 60M. Render once, straight from the source clips: a second
+encode costs more quality than any upload-bitrate gain.

@@ -55,7 +55,7 @@ Use AskUserQuestion (several questions per call) and record the answers in `proj
    changes. A city change gets a big cinematic chapter card. Under the name: a one-line description of what the
    place is (default, `"desc"` per segment, written by Claude and checked for facts), or the name in the local
    script (`local_language` + `place_local`). Render a still example and confirm the format before the film.
-9. **Output**: 4K HLG HDR for YouTube only. Never make an SDR preview unless the user asks (`"sdr_preview": true`).
+9. **Output**: 4K HLG HDR **MP4** for YouTube only (MOV loses HDR on YouTube). Never make an SDR preview unless the user asks (`"sdr_preview": true`).
 10. **Thumbnails** come after the film. First propose several text and graphic options (≤ 3 big words + a
     short line, never the video's length; a badge such as a flag emoji + route), let the user pick, then render
     at least 10 thumbnails.
