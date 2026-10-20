@@ -142,7 +142,7 @@ if __name__ == '__main__':
     print('Final mux (video stream copied, audio normalised to -14 LUFS)…')
     run([FF, '-v', 'error', '-y', '-i', f'{OUT}/joined.mov', '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-tag:v', 'hvc1',
          '-af', ln + ',aresample=48000', '-c:a', 'aac', '-b:a', '320k', *HLG_TAGS, '-movflags', '+faststart', final], 'final').wait()
-    if CFG.get('sdr_preview', True):                      # optional: a 1080p SDR copy for checking on any screen
+    if CFG.get('sdr_preview', False):                      # optional: a 1080p SDR copy for checking on any screen
         from compose import preview
         preview(final, f"{W}/previews/{CFG.get('output_name', 'Travel_Film')}_preview_1080p_SDR.mp4")
     if os.path.exists(f'{OUT}/joined.mov'): os.remove(f'{OUT}/joined.mov')   # intermediate, as big as the film

@@ -105,7 +105,7 @@ def main():
             ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'))
         if dd < MIN_LEN: continue
         edl.append(dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
-                        hdr=r['hdr'], tag='dual-selfie' if o['file'] in dual else '', note=o.get('note', '')))
+                        hdr=r['hdr'], tag='dual-selfie' if o['file'] in dual else '', note=o.get('note', ''), exact=bool(o.get('exact'))))
     # 2b) look-alike pass: different subjects that still LOOK the same (CLIP similarity of the chosen windows) in
     #     the same segment — keep the better one. Repetition is what makes travel edits drag.
     def emb(e):
@@ -120,7 +120,7 @@ def main():
         for e in sh:
             v = emb(e)
             # highlights (q3) are only dropped when nearly identical to another highlight; good shots at `thr`
-            if v is not None and e['tag'] != 'dual-selfie' and any(
+            if v is not None and e['tag'] != 'dual-selfie' and not e.get('exact') and any(
                     k[1] is not None and float(v @ k[1]) > (0.965 if e['q'] == 3 else thr) and k[0]['q'] >= e['q'] for k in keep):
                 dropped.append(e); continue
             keep.append((e, v))

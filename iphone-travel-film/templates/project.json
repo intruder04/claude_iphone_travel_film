@@ -10,6 +10,6 @@
   "accent_rgb": [200, 70, 45],
   "callout_scale": 0.7,
   "music": false,
-  "sdr_preview": true,
+  "sdr_preview": false,
   "user_agent": "iphone-travel-film-skill/1.0 (personal project)"
 }

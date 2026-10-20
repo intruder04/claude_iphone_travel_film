@@ -55,7 +55,7 @@ Use AskUserQuestion (several questions per call) and record the answers in `proj
    changes. A city change gets a big cinematic chapter card. Under the name: a one-line description of what the
    place is (default, `"desc"` per segment, written by Claude and checked for facts), or the name in the local
    script (`local_language` + `place_local`). Render a still example and confirm the format before the film.
-9. **Output**: 4K HLG HDR for YouTube (default), plus a 1080p SDR preview.
+9. **Output**: 4K HLG HDR for YouTube only. Never make an SDR preview unless the user asks (`"sdr_preview": true`).
 10. **Thumbnails** come after the film. First propose several text and graphic options (≤ 3 big words + a
     short line, never the video's length; a badge such as a flag emoji + route), let the user pick, then render
     at least 10 thumbnails.
@@ -84,7 +84,7 @@ S=<skill>/scripts; PY=<skill>/venv/bin/python
 | 6 Plan | `$PY $S/edit_plan.py` | One best shot per subject, cut on calm camera + outside words → `meta/edl.json`, `EDIT_LIST.md`. (`select_shots.py` = automatic fallback without intents.) |
 | 7 Landmarks *(optional)* | `$PY $S/landmarks.py track / check / render` | See `references/landmarks.md`. Check every drift sheet. |
 | 8 Polish | `$PY $S/animals.py …`, `$PY $S/horizon.py …` | Animal labels once per species; level confirmed tilted shots. |
-| 9 Render | `JOBS=2 $PY $S/render_all.py` | Shots → join → loudness −14 LUFS → final MOV → SDR preview → `verify.py`. |
+| 9 Render | `JOBS=2 $PY $S/render_all.py` | Shots → join → loudness −14 LUFS → final HDR MOV → `verify.py` (SDR preview only if asked). |
 | 11 YouTube text | `$PY $S/youtube_meta.py` | Exact chapters from the edit → `renders/YOUTUBE.md`. Write 3 title options, a short description, 3 hashtags and tags (≤ 500 chars); show them to the user. |
 | 10 Thumbnails | `$PY $S/thumbnails.py pick` → propose text options → `make N N N …` | ≥ 10 thumbnails from the chosen frames and text; show `all_thumbnails.jpg` and let the user choose. |
 
