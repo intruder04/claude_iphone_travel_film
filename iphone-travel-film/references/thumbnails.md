@@ -50,3 +50,10 @@ Small line ~64 px Heavy caps, headline ~170 px; both with a dark outline (5–6 
 over any background and on light/dark YouTube UI. The small line's colour is picked per image from a small modern
 palette (yellow, cyan, white, pink, lime) for brightness + hue contrast with what's under it. Ask which kinds of
 shots the user doesn't want on thumbnails (e.g. airplane window views, indoor art installations) and skip them.
+
+## Frame preparation
+`enhance(img)` before any style: auto levels from the luminance histogram (1st→99.5th percentile, no highlight
+clipping), partial lift for dark frames, light unsharp mask. Horizon: automatic detectors (Vision horizon, line
+detection) are fooled by perspective (looking up at gates/towers) and find nothing on most scenes, so level
+by eye on a gridded sheet and only rotate frames that are truly tilted (`enhance(..., level=True)` is opt-in).
+Match frames to the text: a "summer" title wants nature, sea, sky and greenery, not city or indoor shots.

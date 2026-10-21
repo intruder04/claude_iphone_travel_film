@@ -85,6 +85,39 @@ def face_centered(img, aspect=1.0):
     x0 = min(max(0, cx - cw / 2), W_ - cw); y0 = min(max(0, cy - ch * 0.45), H_ - ch)
     return img.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
 
+
+# ------------------------------------------------------------------ photo fix for thumbnail frames
+def horizon_angle(img):
+    """Camera roll in degrees from Apple Vision's horizon detector (None if no horizon found)."""
+    import Vision
+    from Foundation import NSURL
+    tmp = P('tmp', 'thumb_hz.jpg'); img.convert('RGB').resize((1280, 720)).save(tmp, quality=90)
+    h = Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(tmp), None)
+    rq = Vision.VNDetectHorizonRequest.alloc().init(); h.performRequests_error_([rq], None)
+    r = rq.results()
+    return float(np.degrees(r[0].angle())) if r else None
+
+def enhance(img, level=True):
+    """Make a frame thumbnail-ready: level the horizon (0.7–8°), auto levels from the luminance histogram
+    (1st→99.5th percentile, no clipping of highlights), gentle midtone lift for dark frames, light sharpening."""
+    import math
+    img = img.convert('RGB'); W_, H_ = img.size
+    if level:
+        a = horizon_angle(img)
+        if a is not None and 0.7 <= abs(a) <= 8:
+            r = math.radians(abs(a)); k = math.cos(r) + (W_ / H_) * math.sin(r)
+            big = img.resize((int(W_ * k) + 2, int(H_ * k) + 2), Image.LANCZOS).rotate(-a, resample=Image.BICUBIC)
+            L = (big.width - W_) // 2; T = (big.height - H_) // 2; img = big.crop((L, T, L + W_, T + H_))
+    arr = np.asarray(img).astype(np.float32) / 255
+    lum = arr @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    lo, hi = np.percentile(lum, 1), np.percentile(lum, 99.5)
+    if hi - lo > 0.15:
+        arr = np.clip((arr - lo * 0.85) / max(hi - lo * 0.85, 1e-3), 0, 1)
+    m = float((arr @ np.array([0.2126, 0.7152, 0.0722], np.float32)).mean())
+    if m < 0.38: arr = arr ** (math.log(0.42) / math.log(max(m, 0.05)) * 0.6 + 0.4)   # lift dark frames, partly
+    img = Image.fromarray((arr * 255).astype(np.uint8))
+    return img.filter(ImageFilter.UnsharpMask(radius=1.6, percent=55, threshold=2))
+
 # ------------------------------------------------------------------ candidates
 def pick(n=16):
     V = jload('meta/vision.json', {}); E, edl = edl_shots()
