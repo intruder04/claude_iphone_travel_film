@@ -19,6 +19,31 @@ Rules these follow (current travel-thumbnail conventions):
   because Pillow can't render flag ligatures.
 - Text from `project.json` (`thumbnail_text`, `thumbnail_badge`). Propose options and let the user choose.
 
+## What the data says (checked against the thumbnails, 2026)
+Sources: vidIQ's 2026 study of 500 breakout long-form videos in 30 niches; TubeAnalytics' 2025–26 CTR patterns
+(videos with ≥ 10k impressions; method not fully published); Kapwing's face-expression analysis by genre. Most
+"+X % CTR" figures in blogs can't be traced to a method, so treat numbers as direction, not promise.
+- **A clear face wins.** 69 % of breakout thumbnails show a face, 80 % of the top 50. Only ~1 in 20 uses an
+  exaggerated expression: a clear, well-lit, genuine face is what matters. Size: roughly ¼–⅓ of the frame,
+  away from the text. Travel has the most happy faces of any genre (~54 %), so prefer a smiling frame when one
+  exists (CIDetector `hasSmile` finds them).
+- **One focal point.** Four or more distinct elements read as chaos on a phone; collages work for multi-stop
+  trips only when sparse (2–3 panels). Wide landscapes with no subject score lowest: zoom in on the subject
+  (`focus_crop`, Apple Vision saliency) or add the face.
+- **Contrast + colour.** 89 % of breakouts have a clear face, high contrast, or both. Bright, saturated
+  backgrounds beat muted or dark ones (+8–14 % reported) — but adapt: boost muted frames, leave a saturated blue
+  sky alone (`style_minimal(..., vivid=True)`).
+- **Text: ≤ 5 words**, bold sans-serif, readable when the thumbnail is ~120–320 px wide. Text helps more in
+  search than in browse, so a text-free variant is a fair A/B partner.
+- **A soft background blur behind the face** separates it (a reported mobile case: bigger face + blurred
+  background + 3 bold words lifted CTR from 1.7 % to 4 %).
+- **Match the video.** YouTube's Test & Compare picks winners by watch-time share, not CTR, so a thumbnail that
+  over-promises loses even if it gets clicks.
+
+`thumb_score.py` turns these into a heuristic score per thumbnail (focus 40, contrast 15, colour 15, face 15,
+phone-readable text 10, clutter 5). Use it to pick the top 3 for Test & Compare and to find weak designs to
+remake. It is not a CTR prediction.
+
 ## Collage layouts and options
 `collage` (3 slanted panels), `grid4` (2×2), `split` (diagonal halves), `strips` (4 tall strips + title band),
 `mosaic` / `mosaic_r` (big hero + 2 stacked, hero left or right), `polaroid` (tilted photo cards over a blurred

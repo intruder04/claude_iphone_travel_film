@@ -84,9 +84,9 @@ S=<skill>/scripts; PY=<skill>/venv/bin/python
 | 6 Plan | `$PY $S/edit_plan.py` | One best shot per subject, cut on calm camera + outside words → `meta/edl.json`, `EDIT_LIST.md`. (`select_shots.py` = automatic fallback without intents.) |
 | 7 Landmarks *(optional)* | `$PY $S/landmarks.py track / check / render` | See `references/landmarks.md`. Check every drift sheet. |
 | 8 Polish | `$PY $S/animals.py …`, `$PY $S/horizon.py …` | Animal labels once per species; level confirmed tilted shots. |
-| 9 Render | `JOBS=2 $PY $S/render_all.py` | Shots → join → loudness −14 LUFS → final HDR MOV → `verify.py` (SDR preview only if asked). |
+| 9 Render | `JOBS=2 $PY $S/render_all.py` | Shots → join → loudness −14 LUFS → final HDR MP4 → `verify.py` (SDR preview only if asked). |
 | 11 YouTube text | `$PY $S/youtube_meta.py` | Exact chapters from the edit → `renders/YOUTUBE.md`. Write 3 title options, a short description, 3 hashtags and tags (≤ 500 chars); show them to the user. |
-| 10 Thumbnails | `$PY $S/thumbnails.py pick` → propose text options → `make N N N …` | ≥ 10 thumbnails from the chosen frames and text; show `all_thumbnails.jpg` and let the user choose. |
+| 10 Thumbnails | `$PY $S/thumbnails.py pick` → propose text options → `make N N N …` | ≥ 10 thumbnails from the chosen frames and text. Then `$PY $S/thumb_score.py` ranks them against the measured click factors (focal point, face, phone-readable text, contrast, colour) → `thumb_scores.md`; remake weak ones (see `references/thumbnails.md`), show `all_thumbnails.jpg` with the top picks and let the user choose. |
 
 Re-running a step is cheap: analysis results are cached. `render_all.py` rebuilds the edit list itself when
 `intents.json` / `locations.json` are newer than it, and re-renders exactly the shots whose inputs changed (each

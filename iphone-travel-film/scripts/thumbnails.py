@@ -231,6 +231,25 @@ def subject_crop(big):
     m2 = subject_mask(crop)
     return (crop, m2) if m2 is not None and (np.asarray(m2) > 128).mean() > 0.02 else (None, None)
 
+def focus_crop(big, zoom_max=1.7, x_target=0.64, fill=0.72):
+    """Zoom a 16:9 crop of the 4K frame onto its main salient object (Apple Vision objectness saliency), so a wide
+    shot becomes one clear focal point: the object fills ~`fill` of the height and sits at `x_target` (text goes left).
+    Zoom is bounded (≤ zoom_max, so a 4K frame stays sharp at 1280 px). Unchanged when nothing stands out."""
+    import Vision
+    from Foundation import NSURL
+    small = big.resize((TW, TH), Image.LANCZOS); tmp = P('tmp', 'thumb_sal.jpg'); small.save(tmp, quality=90)
+    h = Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(tmp), None)
+    rq = Vision.VNGenerateObjectnessBasedSaliencyImageRequest.alloc().init(); h.performRequests_error_([rq], None)
+    objs = (rq.results() or [None])[0]; objs = list(objs.salientObjects() or []) if objs else []
+    if not objs: return small
+    b = max(objs, key=lambda o: o.boundingBox().size.width * o.boundingBox().size.height * o.confidence()).boundingBox()
+    W_, H_ = big.size
+    x0, x1 = b.origin.x * W_, (b.origin.x + b.size.width) * W_
+    y0, y1 = (1 - b.origin.y - b.size.height) * H_, (1 - b.origin.y) * H_
+    ch = min(H_, max(H_ / zoom_max, (y1 - y0) / fill)); cw = ch * 16 / 9
+    L = min(max(0, (x0 + x1) / 2 - cw * x_target), W_ - cw); T = min(max(0, (y0 + y1) / 2 - ch * 0.48), H_ - ch)
+    return big.crop((int(L), int(T), int(L + cw), int(T + ch))).resize((TW, TH), Image.LANCZOS)
+
 def style_pop(big, words, badge_text):
     """Subject focus: Apple Vision lifts the subject; it stays sharp and bright while the background is dimmed and
     softly blurred (no outline or glow). Zoomed in on the right, huge 2-line text on the left."""
@@ -307,12 +326,25 @@ def pick_accent(img, box):
         if sc > score: best, score = c, sc
     return best
 
-def style_minimal(src, words, badge_text):
+def style_minimal(src, words, badge_text, face_big=None, vivid=False):
     """Calm 'aesthetic vlog' look: soft grade, big lowercase headline bottom-left, a readable small line above it.
-    Both lines have a dark outline + soft shadow (readable on any background); the small line's colour adapts to the image."""
-    img = grade(src, 1.05, 1.02, 1.04).convert('RGBA')
+    Both lines have a dark outline + soft shadow (readable on any background); the small line's colour adapts to the image.
+    vivid: brighter, more saturated grade (bright saturated thumbnails out-click muted ones).
+    face_big: a 4K frame of the creator — the face is cut out (no outline) and stands large on the right."""
+    if vivid:                                          # adaptive: muted frames get more colour, already-saturated ones (blue sky) none
+        sat_now = float(np.asarray(src.convert('HSV'))[..., 1].mean()) / 255
+        img = grade(src, float(np.clip(1.0 + (0.42 - sat_now) * 1.2, 1.0, 1.22)), 1.06, 1.04).convert('RGBA')
+    else:
+        img = grade(src, 1.05, 1.02, 1.04).convert('RGBA')
     g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.50), int(TW * 0.75), TH), fill=255)
     g = g.filter(ImageFilter.GaussianBlur(140)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.point(lambda v: int(v * 0.72))); img.alpha_composite(sh)
+    if face_big is not None:
+        fsrc, m = subject_crop(face_big)
+        if fsrc is not None and m.getbbox():
+            img = Image.alpha_composite(img.filter(ImageFilter.GaussianBlur(4)), Image.new('RGBA', (TW, TH), (0, 0, 0, 38)))   # soft depth: face pops
+            cut = grade(fsrc, 1.12, 1.04, 1.06).convert('RGBA'); cut.putalpha(m.filter(ImageFilter.GaussianBlur(2)))
+            cut = cut.crop(m.getbbox()); k = TH * 0.88 / cut.height; cut = cut.resize((int(cut.width * k), int(cut.height * k)), Image.LANCZOS)
+            img.alpha_composite(cut, (TW - cut.width + int(cut.width * 0.08), TH - cut.height))
     d = ImageDraw.Draw(img)
     fh = fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 170)
     l, t, r, b = d.textbbox((0, 0), words[0].lower(), font=fh); hx, hy = 50, TH - 46 - (b - t) - t

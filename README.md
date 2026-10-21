@@ -28,9 +28,10 @@ Works for any trip, in any country.
 - **Fixes**: levels tilted horizons, turns sideways-tagged clips back to landscape, and puts vertical clips on
   a blurred fill. Keeps dual-camera selfies.
 - **4K HLG HDR that YouTube recognises** (BT.2020 / HLG signalled in both the bitstream and the container), −14
-  LUFS audio, plus a 1080p SDR preview, all verified automatically.
+  LUFS audio, all verified automatically.
 - **YouTube thumbnails**: proposes text and graphic options first, then renders at least 10 thumbnails in
-  current styles (subject cut-out with outline, bold text, flag badge, collage, cinematic).
+  current styles (face + scenery, one bold focal point, minimal, collage), then scores them against what
+  the click data says works (focal point, face, phone-readable text, contrast).
 
 ## Built for Apple Silicon
 | Work | Runs on |
