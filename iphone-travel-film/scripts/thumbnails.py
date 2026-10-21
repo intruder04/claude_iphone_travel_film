@@ -256,16 +256,44 @@ def style_collage(srcs, words, badge_text):
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
+ACCENTS = [(255, 214, 10), (0, 229, 255), (255, 255, 255), (255, 92, 138), (124, 255, 107)]   # yellow, cyan, white, pink, lime
+
+def pick_accent(img, box):
+    """Accent colour for small text, chosen from the image under it: must contrast in brightness AND hue with the
+    region (so it pops), and is drawn from a small modern palette (so it never looks random)."""
+    import colorsys
+    reg = np.asarray(img.convert('RGB').crop(tuple(int(v) for v in box)).resize((64, 32))).reshape(-1, 3) / 255.0
+    lum = float((reg @ [0.2126, 0.7152, 0.0722]).mean())
+    h, s_, v = colorsys.rgb_to_hsv(*reg.mean(0))
+    best, score = None, -1
+    for c in ACCENTS:
+        ch, cs, cv = colorsys.rgb_to_hsv(*(np.array(c) / 255.0))
+        cl = (np.array(c) / 255.0) @ [0.2126, 0.7152, 0.0722]
+        hue_gap = min(abs(ch - h), 1 - abs(ch - h)) * (s_ > 0.15) * (cs > 0.1)   # only matters if both are coloured
+        sc = abs(cl - lum) * 1.5 + hue_gap + (0.25 if c == ACCENTS[0] else 0)   # slight preference for classic yellow
+        if sc > score: best, score = c, sc
+    return best
+
 def style_minimal(src, words, badge_text):
-    """Calm 'aesthetic vlog' look: soft grade, small elegant text bottom-left, lots of image."""
+    """Calm 'aesthetic vlog' look: soft grade, big lowercase headline bottom-left, a readable small line above it.
+    Both lines have a dark outline + soft shadow (readable on any background); the small line's colour adapts to the image."""
     img = grade(src, 1.05, 1.02, 1.04).convert('RGBA')
-    g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.55), int(TW * 0.7), TH), fill=255)
-    g = g.filter(ImageFilter.GaussianBlur(140)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.point(lambda v: v * 0.7)); img.alpha_composite(sh)
+    g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.50), int(TW * 0.75), TH), fill=255)
+    g = g.filter(ImageFilter.GaussianBlur(140)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.point(lambda v: int(v * 0.72))); img.alpha_composite(sh)
     d = ImageDraw.Draw(img)
-    if len(words) > 1: d.text((56, TH - 285), words[1].upper(), font=sf(34, 'Semibold'), fill=(240, 240, 240))
-    shadow_text(img, (52, TH - 220), words[0].lower(), fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 150), blur=10, alpha=140)
-    route_dots(img, (TW * 0.55, TH - 120), TW * 0.36)
-    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
+    fh = fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 170)
+    l, t, r, b = d.textbbox((0, 0), words[0].lower(), font=fh); hx, hy = 50, TH - 46 - (b - t) - t
+    if len(words) > 1:
+        fsub = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.62, 64)
+        sl, st, sr, sb = d.textbbox((0, 0), words[1].upper(), font=fsub)
+        sy = hy + t - 30 - (sb - st) - st
+        acc = pick_accent(src, (54, sy + st, 54 + sr - sl, sy + sb))
+        shd = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); ImageDraw.Draw(shd).text((56, sy + 5), words[1].upper(), font=fsub, fill=(0, 0, 0, 170))
+        img.alpha_composite(shd.filter(ImageFilter.GaussianBlur(6)))
+        ImageDraw.Draw(img).text((54, sy), words[1].upper(), font=fsub, fill=acc, stroke_width=5, stroke_fill=(10, 10, 10))
+    shd = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); ImageDraw.Draw(shd).text((hx + 3, hy + 8), words[0].lower(), font=fh, fill=(0, 0, 0, 170))
+    img.alpha_composite(shd.filter(ImageFilter.GaussianBlur(10)))
+    ImageDraw.Draw(img).text((hx, hy), words[0].lower(), font=fh, fill=(255, 255, 255), stroke_width=6, stroke_fill=(10, 10, 10))
     return img
 
 def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190):

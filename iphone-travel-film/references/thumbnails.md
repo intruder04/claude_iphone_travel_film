@@ -44,3 +44,9 @@ Front-load searchable words (country, cities, "4K HDR") in the first ~40 charact
 options in four groups: search-first (the pattern of high-view 4K travel channels: place + format), story/feeling,
 a specific hook taken from a real moment in the film, and calm/ambient when there is no narration or music.
 No clickbait the film doesn't deliver. Suggest one main title and a contrasting one to A/B test.
+
+## Minimal style text
+Small line ~64 px Heavy caps, headline ~170 px; both with a dark outline (5–6 px) and a soft drop shadow so they read
+over any background and on light/dark YouTube UI. The small line's colour is picked per image from a small modern
+palette (yellow, cyan, white, pink, lime) for brightness + hue contrast with what's under it. Ask which kinds of
+shots the user doesn't want on thumbnails (e.g. airplane window views, indoor art installations) and skip them.
