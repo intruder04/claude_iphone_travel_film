@@ -142,8 +142,8 @@ if __name__ == '__main__':
     ln = (f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}"
           f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
     final = f"{OUT}/{CFG.get('output_name', 'Travel_Film')}_HDR.mp4"   # MP4, not MOV: YouTube ignored HDR in MOV (nclc colr)
-    print('Final mux (video stream copied, audio normalised to -14 LUFS)…')
-    run([FF, '-v', 'error', '-y', '-i', f'{OUT}/joined.mov', '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-tag:v', 'hvc1',
+    print('Final mux (video stream copied, Dolby Vision RPU stripped, audio normalised to -14 LUFS)…')
+    run([FF, '-v', 'error', '-y', '-i', f'{OUT}/joined.mov', '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-bsf:v', 'dovi_rpu=strip=1', '-tag:v', 'hvc1',
          '-af', ln + ',aresample=48000', '-c:a', 'aac', '-b:a', '320k', *HLG_TAGS, '-movflags', '+faststart', final], 'final').wait()
     if CFG.get('sdr_preview', False):                      # optional: a 1080p SDR copy for checking on any screen
         from compose import preview

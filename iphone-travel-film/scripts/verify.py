@@ -30,6 +30,10 @@ def main(f):
     head = open(f, 'rb').read(16_000_000); i = head.find(b'colr')
     chk('container colr = nclx (MP4; YouTube ignores HDR in MOV/nclc)', i > 0 and head[i + 4:i + 8] == b'nclx', head[i + 4:i + 8].decode(errors='replace') if i > 0 else 'missing')
     chk('bitstream VUI 9/18/9', vui == {'colour_primaries': 9, 'transfer_characteristics': 18, 'matrix_coefficients': 9}, vui)
+    fr = subprocess.run([FFPROBE, '-v', 'error', '-select_streams', 'v:0', '-read_intervals', '%+#30', '-show_entries', 'frame_side_data=side_data_type',
+                         '-of', 'csv=p=0', f], capture_output=True, text=True).stdout
+    chk('no Dolby Vision RPU (iPhone DV left in an edited stream breaks playback on DV TVs)', 'Dolby Vision' not in fr,
+        'present' if 'Dolby Vision' in fr else 'none')
     chk('audio', a and a[0]['codec_name'] == 'aac', f"{a[0]['codec_name']} {a[0].get('sample_rate')} Hz {a[0].get('channels')} ch" if a else 'none')
     d = float(p['format']['duration']); chk('duration', True, f'{d // 60:.0f} min {d % 60:.0f} s, {int(p["format"]["bit_rate"]) / 1e6:.0f} Mb/s')
     lo = subprocess.run([FF, '-hide_banner', '-i', f, '-vn', '-af', 'ebur128', '-f', 'null', '-'], capture_output=True, text=True).stderr

@@ -106,8 +106,10 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='60M'):
         cmd += ['-map', f'{ai}:a:0', '-af', ','.join(af) + ',aresample=48000,apad', '-ac', '2', '-t', f'{dur:.3f}', '-c:a', 'pcm_s16le']
     # YouTube: keep the stream at a common HEVC level (5.1/5.2). VideoToolbox's default short GOP + 120 Mb/s peaks give
     # level 6.1, which YouTube accepted but never turned into 4K/HDR. 2 s GOP + ≤80 Mb/s peaks → level 5.2.
+    # iPhone clips are Dolby Vision 8.4 (HLG + per-frame RPU). ffmpeg carries the source RPU into the new encode, where it no
+    # longer matches the edited picture; Dolby Vision TVs (e.g. Google TV Streamer) then fail to play YouTube's HDR stream.
     cmd += ['-c:v', 'hevc_videotoolbox', '-prio_speed', '1', '-profile:v', 'main10', '-pix_fmt', 'p010le', '-b:v', bitrate, '-maxrate', '80M', '-g', str(FPS * 2),
-            '-tag:v', 'hvc1', *HLG_TAGS, '-r', str(FPS), out]
+            '-bsf:v', 'dovi_rpu=strip=1', '-tag:v', 'hvc1', *HLG_TAGS, '-r', str(FPS), out]
     rc = run(cmd, 'compose ' + os.path.basename(out)).wait()
     if ov: os.remove(ov)
     if rc != 0: raise RuntimeError(f'ffmpeg failed for {out}')

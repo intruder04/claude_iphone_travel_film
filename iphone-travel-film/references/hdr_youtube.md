@@ -32,3 +32,12 @@ upload a 60-second excerpt first: short clips process in minutes.
 level follows the requested bitrate: ≤ 60 Mb/s (with `-maxrate 80M -g 120`) gives level 5.2; higher requests give 6.1,
 which is untested on YouTube, so the renderer stays at 60M. Render once, straight from the source clips: a second
 encode costs more quality than any upload-bitrate gain.
+
+## Strip the iPhone's Dolby Vision metadata
+iPhone HDR clips are Dolby Vision Profile 8.4: an HLG picture plus a per-frame Dolby Vision RPU. ffmpeg carries
+that RPU into a new encode (VideoToolbox included), where it no longer matches the edited picture (titles,
+fades, grading). Seen in practice: YouTube then made only AV1 HDR versions, and a Google TV Streamer (a
+Dolby Vision device) showed a black screen with greyed-out controls. The same footage without the RPU got VP9
+HDR and played in 4K HDR. `compose.py` and the final mux in `render_all.py` strip it (`-bsf:v dovi_rpu=strip=1`);
+`verify.py` fails if any RPU is left. An already-rendered film can be fixed without re-encoding:
+`ffmpeg -i film.mp4 -map 0 -c copy -bsf:v dovi_rpu=strip=1 -movflags +faststart film_fixed.mp4`.
