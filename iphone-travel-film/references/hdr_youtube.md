@@ -41,3 +41,12 @@ Dolby Vision device) showed a black screen with greyed-out controls. The same fo
 HDR and played in 4K HDR. `compose.py` and the final mux in `render_all.py` strip it (`-bsf:v dovi_rpu=strip=1`);
 `verify.py` fails if any RPU is left. An already-rendered film can be fixed without re-encoding:
 `ffmpeg -i film.mp4 -map 0 -c copy -bsf:v dovi_rpu=strip=1 -movflags +faststart film_fixed.mp4`.
+
+## New upload plays everywhere except a TV device (black screen, greyed-out controls)
+Seen with a Google TV Streamer: phone and browser played the new 4K60 HLG upload in HDR, but the TV app sat
+at 0:00 with `Current Res 0x0` while buffering data (Stats for nerds). Other channels' videos uploaded the
+same day failed the same way, so it is YouTube's first processing of new uploads, not the file. Re-uploading
+doesn't help (creators report the same for 4K being capped at 1080p on TVs). What works: in YouTube Studio →
+Editor → Trim & cut, remove the last frame and save. YouTube re-processes the video (keeping its link, views
+and HDR) and the new versions play on the TV. Try it on a short unlisted test clip first if unsure.
+Diagnose with `yt-dlp -F <url>`: HDR versions are formats 330–337 (VP9) and 694–701 (AV1).
