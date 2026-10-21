@@ -145,7 +145,7 @@ def badge(img, text, xy, h=46):
 
 # ------------------------------------------------------------------ styles
 YELLOW = (255, 214, 10)
-ACC = set(CFG.get('thumbnail_accents', ['flag_badge', 'yellow_bar']))
+ACC = set(CFG.get('thumbnail_accents', ['yellow_bar']))   # 'flag_badge' / 'route_dots' only on request
 ROUTE = CFG.get('thumbnail_route', [])
 
 def route_dots(img, xy, width, light=True):
@@ -210,7 +210,7 @@ def style_pop(big, words, badge_text):
     d = ImageDraw.Draw(img); x0 = 48
     w1, w2 = (words + [''])[:2]
     f1 = fit_font(d, w1, condensed, TW * 0.46, 230); text_stroke(d, (x0, 130), w1, f1, fill=(255, 255, 255), sw=10)
-    y2 = 130 + f1.size * 0.95
+    y2 = 130 + f1.size * 0.95 + max(30, f1.size * 0.16)   # breathing room between headline and sub-line
     if w2:
         f2 = fit_font(d, w2, condensed, TW * 0.46, 120); second_line(d, x0, y2, w2, f2); y2 += f2.size * 1.15
     route_dots(img, (x0 + 20, min(TH - 120, y2 + 60)), TW * 0.38)
@@ -228,7 +228,7 @@ def style_cinematic(src, words, badge_text):
     if len(words) > 1:
         fs = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 64)
         if 'yellow_bar' in ACC:
-            boxed_text(d, TW / 2, TH * 0.70 + 22, words[1].upper(), fs, YELLOW, (10, 10, 10), center=True)
+            boxed_text(d, TW / 2, TH * 0.70 + 52, words[1].upper(), fs, YELLOW, (10, 10, 10), center=True)
         else:
             shadow_text(img, (TW / 2, TH * 0.70 + 64), words[1].upper(), fs, fill=YELLOW, anchor='ms', blur=8)
     route_dots(img, (TW * 0.3, 70), TW * 0.4)
@@ -252,7 +252,7 @@ def style_collage(srcs, words, badge_text):
     box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
     if len(words) > 1:
         f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 60)
-        text_stroke(d, (TW / 2, box[3] + 30), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+        text_stroke(d, (TW / 2, box[3] + 58), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
@@ -262,7 +262,7 @@ def style_minimal(src, words, badge_text):
     g = Image.new('L', (TW, TH), 0); ImageDraw.Draw(g).rectangle((0, int(TH * 0.55), int(TW * 0.7), TH), fill=255)
     g = g.filter(ImageFilter.GaussianBlur(140)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(g.point(lambda v: v * 0.7)); img.alpha_composite(sh)
     d = ImageDraw.Draw(img)
-    if len(words) > 1: d.text((56, TH - 250), words[1].upper(), font=sf(34, 'Semibold'), fill=(240, 240, 240))
+    if len(words) > 1: d.text((56, TH - 285), words[1].upper(), font=sf(34, 'Semibold'), fill=(240, 240, 240))
     shadow_text(img, (52, TH - 220), words[0].lower(), fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 150), blur=10, alpha=140)
     route_dots(img, (TW * 0.55, TH - 120), TW * 0.36)
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
@@ -277,7 +277,7 @@ def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190):
     box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
     if len(words) > 1:
         f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.75, 58)
-        text_stroke(d, (TW / 2, box[3] + 22), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+        text_stroke(d, (TW / 2, box[3] + 50), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
 
 def _panel(img, src, box, border=10):
     x0, y0, x1, y1 = [int(v) for v in box]
@@ -320,7 +320,7 @@ def style_mosaic(srcs, words, badge_text):
     vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((0, int(TH * 0.5), int(L), TH), fill=255)
     sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
     d = ImageDraw.Draw(img); x0 = 48
-    f1 = fit_font(d, words[0], condensed, L * 0.85, 200); text_stroke(d, (x0, TH - 120 - f1.size * 1.6), words[0], f1, sw=9)
+    f1 = fit_font(d, words[0], condensed, L * 0.85, 200); text_stroke(d, (x0, TH - 150 - f1.size * 1.6), words[0], f1, sw=9)
     if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, L * 0.8, 100))
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
@@ -346,7 +346,7 @@ def style_mosaic_r(srcs, words, badge_text):
     vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((int(L), int(TH * 0.5), TW, TH), fill=255)
     sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
     d = ImageDraw.Draw(img); x0 = int(L + 48); w = TW - L
-    f1 = fit_font(d, words[0], condensed, w * 0.85, 200); text_stroke(d, (x0, TH - 120 - f1.size * 1.6), words[0], f1, sw=9)
+    f1 = fit_font(d, words[0], condensed, w * 0.85, 200); text_stroke(d, (x0, TH - 150 - f1.size * 1.6), words[0], f1, sw=9)
     if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, w * 0.8, 100))
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(L) + 30, 36))
     return img
@@ -384,7 +384,7 @@ def style_face_hero(face_big, hero, words, badge_text, glow=False, neon=None):
             img.alpha_composite(cut, pos)
     d = ImageDraw.Draw(img)
     f = fit_font(d, words[0], condensed, TW * 0.5, 260); text_stroke(d, (56, TH * 0.5 - f.size * 0.6), words[0], f, sw=10)
-    if len(words) > 1: second_line(d, 60, TH * 0.5 + f.size * 0.45, words[1].upper(), fit_font(d, words[1].upper(), condensed, TW * 0.45, 90))
+    if len(words) > 1: second_line(d, 60, TH * 0.5 + f.size * 0.45 + 40, words[1].upper(), fit_font(d, words[1].upper(), condensed, TW * 0.45, 90))
     return img
 
 def style_clean(hero, words, badge_text):
