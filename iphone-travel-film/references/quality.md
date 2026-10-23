@@ -2,15 +2,27 @@
 
 ## Content and edit
 - [ ] Every segment name matches what is on screen (check the sheets, not only GPS).
-- [ ] The opening is strong. Arrival or aerial clips go first when the user asked for them.
+- [ ] The opening is strong (an arrival, a first view, or the filmmaker's own words). Aerial clips go first only
+      when the trip has them and the user asked for them.
 - [ ] No two near-identical shots back to back. Repetitive places (forest paths, rows of gates, aquariums)
       get `dedupe` ≈ 0.86 and a low weight.
 - [ ] No shot starts or ends on the record-button wobble, a blur, or a pocket/floor frame.
 - [ ] Dual-camera selfies are kept at a reasonable length, and cut points avoid mid-word speech
       (`select_shots.py` snaps cuts to quiet audio).
 - [ ] Animals appear only when they do something; each species is labelled once.
+- [ ] Every vertical-tagged clip was checked on `review/orientation_*.jpg`; the tag is wrong for many shots pointing
+      down (food, tables, floors). Only truly vertical clips get the blurred fill.
 - [ ] Vertical clips: centred sharp image on a blurred, darkened fill of themselves (no black bars).
-- [ ] Total length is within ±5 % of the target. Adjust weights rather than cutting good moments.
+- [ ] Total length is close to the target when there is one (the user may set none). Adjust weights rather than
+      cutting good moments. Tell the user the exact length before the final render.
+- [ ] Screen recordings appear only next to the clip they explain and show no private data.
+
+## Subtitles
+- [ ] Every cue was read and corrected by Claude (`subtitles.json`); unreviewed drafts are never burned in.
+- [ ] Only the filmmaker's and companions' speech; announcements and strangers only when they matter.
+- [ ] ≤ 2 lines, ≤ ~42 characters per line, ≥ 1.2 s on screen, no cue split by a cut.
+- [ ] White (75 % HLG) semibold text, ~4.6 % of frame height, on a near-black box per line (≥ 15:1 contrast),
+      bottom centre inside the title-safe area; at the top while a lower-third title is showing.
 
 ## Titles
 - [ ] Shown only when the location changes; never on every clip.

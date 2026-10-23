@@ -14,17 +14,33 @@ Cutting rules (all measured, nothing guessed):
   * an intent with "exact": true keeps its window untouched (no trimming/snapping) — for moments whose build-up
     matters, e.g. lights standing still before they start to move
   * a segment may set "max_shot" (seconds) to keep the pace up in places with many highlights
-  * aerial "plane" windows from locations.json are used as listed (steady holds only, zooms excluded)
-Order: segments in locations.json order; inside a segment, capture time.
+  * optional aerial windows ("aerial" in locations.json; older projects call it "plane") are used as listed
+    (steady holds only, zooms excluded). Most trips have none, and nothing else depends on them
+  * with subtitles on, a shot with speech is extended (or trimmed back) to whole spoken sentences, so a subtitle
+    never starts or stops mid-sentence; speech shots may run up to project.json "speech_max" (default 25 s)
+  * screen recordings (index "screen": true) are used only when they explain the footage around them (the route on
+    a map, a ticket app, a translation). "after": "IMG_….MOV" on the intent places one right after that camera clip
+    (its own capture time is often minutes off the moment it belongs to); unmatched screen recordings get q 0
+  * "speed" on an intent changes playback speed: 0.5 = slow motion, 2 / 3 / 4 / 8 = sped up (a "4×" badge is shown).
+    Slow motion needs real frames: it is limited to 30 / (the clip's real average fps), so 60 fps clips go to 0.5x and
+    low-light clips (variable frame rate, ~30 fps) are never slowed. Shots with speech are never speed-changed, unless
+    the intent says "speech_ok": true (Claude checked that it is only announcements, a guide or background chatter).
+    "win" is in source seconds; the shot's length on the timeline is the window divided by the speed
+  * project.json "cold_open": true puts a ~25 s teaser of the best moments in front of the film (and of every part
+    when the film is split): locations.json "teaser": {"1": ["IMG_….MOV", ...]} lists the clips (taken from their
+    windows in this edit, ~3 s each); without a list the highest-rated, most aesthetic highlights are picked, one per place
+  * project.json "end_card": true makes sure the last shot of the film / each part is long enough (≥ 7 s) for the card
+Order: segments in locations.json order; inside a segment, capture time (or the "after" clip's).
 The target length in project.json is a guide only — the plan reports it, it never pads or cuts to hit it.
 Output: meta/edl.json, EDIT_LIST.md"""
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
-from common import CFG, P, jload, jsave
+from common import CFG, P, jload, jsave, probe
 
 MAXLEN = {3: 12.0, 2: 7.0, 1: 4.5}
-SPEECH_MAX, MIN_LEN, SNAP = 18.0, 2.0, 1.5
+SPEECH_MAX, MIN_LEN, SNAP = float(CFG.get('speech_max', 25.0)), 2.0, 1.5
+SENTENCE_EXTEND = 6.0       # how far a cut may move to keep a sentence whole
 
 def per_second_score(f):
     """Quality per second: sharpness, shake, exposure, Apple aesthetics (same model as select_shots)."""
@@ -60,10 +76,34 @@ def word_safe(words, a, b):
         if ws < b < we: b = we + 0.25
     return a, b
 
-def refine(f, win, q, dur, has_speech, words, max_shot=None):
+def sentence_safe(segs, a, b, dur):
+    """Keep whole sentences: a cut inside a sentence moves to its start/end (≤ SENTENCE_EXTEND s away), else drops it."""
+    for ss_, se_, _ in segs:
+        if ss_ < a < se_: a = max(0.0, ss_ - 0.15) if a - ss_ <= SENTENCE_EXTEND else se_ + 0.1
+        if ss_ < b < se_: b = min(dur - 0.05, se_ + 0.35) if se_ - b <= SENTENCE_EXTEND else ss_ - 0.05
+    return a, b
+
+def real_fps(f):
+    """Average frame rate actually recorded (iPhones drop to ~25-30 fps in low light even in 60/120 fps modes)."""
+    v = [s for s in probe(f)['streams'] if s['codec_type'] == 'video'][0]
+    n, d = map(int, v.get('avg_frame_rate', '0/1').split('/'))
+    return n / d if d else 30.0
+
+def clamp_speed(f, speed, has_speech):
+    if speed == 1.0: return 1.0
+    if has_speech:
+        print(f'  {f}: speed {speed:g} ignored — the window has speech'); return 1.0
+    if speed < 1.0:
+        lo = min(1.0, 30.0 / max(1.0, real_fps(f)))         # ≥ 30 distinct frames per second on screen
+        if speed < lo - 0.02: print(f'  {f}: slow motion {speed:g} → {lo:.2g} (clip has {real_fps(f):.0f} fps)')
+        return round(max(speed, lo), 2)
+    return float(speed)
+
+def refine(f, win, q, dur, has_speech, words, max_shot=None, segs=(), speed=1.0):
     a, b = max(0.0, win[0]), min(dur - 0.1, win[1])
     cap = SPEECH_MAX if has_speech else MAXLEN.get(q, 7.0)
     if max_shot: cap = min(cap, max_shot)                  # segment pace limit (busy places with many shots)
+    cap *= speed                                            # caps are timeline seconds; the window is source seconds
     if b - a > cap:                                         # keep the best-scoring part of a long moment
         sc = per_second_score(f); sh = shots(f)
         L = int(cap); best, bi = -1e9, int(a)
@@ -77,8 +117,43 @@ def refine(f, win, q, dur, has_speech, words, max_shot=None):
     a2 = calm_point(sh, a, +1); b2 = calm_point(sh, b, -1)
     if b2 - a2 >= MIN_LEN: a, b = a2, b2
     a, b = word_safe(words, a, b)
+    if segs and CFG.get('subtitles', False): a, b = sentence_safe(segs, a, b, dur)
     b = min(b, dur - 0.05)
     return round(a, 2), round(b - a, 2)
+
+TEASER_SHOT, TEASER_LEN = 3.0, 25.0
+
+def add_teasers(edl, part_of, chosen):
+    """Insert a teaser (best moments, ~3 s each) in front of the film or of each part. Shots carry tag 'teaser'."""
+    try:
+        VIS = jload('meta/vision.json', {})
+    except SystemExit:
+        VIS = {}
+    def aes(e):
+        v = [x['aes'] for x in VIS.get(e['file'], [])[int(e['ss']):int(e['ss'] + e['dur']) + 1] if x.get('aes') is not None]
+        return float(np.mean(v)) if v else 0.0
+    out, parts = [], list(dict.fromkeys(part_of[e['seg']] for e in edl))
+    for p in parts:
+        shots = [e for e in edl if part_of[e['seg']] == p]
+        want = chosen.get(str(p)) or chosen.get('all' if p is None else '') or []
+        if want:
+            pick = [next(e for e in shots if e['file'] == f) for f in want if any(e['file'] == f for e in shots)]
+        else:
+            cand = sorted([e for e in shots if e['q'] == 3 and e.get('speed', 1.0) == 1.0 and not e['portrait']
+                           and e['tag'] not in ('screen', 'dual-selfie')], key=aes, reverse=True)
+            pick, seen = [], set()
+            for e in cand:
+                if e['seg'] in seen: continue
+                pick.append(e); seen.add(e['seg'])
+                if len(pick) * TEASER_SHOT >= TEASER_LEN: break
+            pick.sort(key=lambda e: edl.index(e))
+        for e in pick:
+            mid = e['ss'] + e['dur'] * e.get('speed', 1.0) / 2
+            out.append(dict(e, ss=round(max(e['ss'], mid - TEASER_SHOT / 2), 2), dur=min(TEASER_SHOT, e['dur']), seg=shots[0]['seg'],
+                            subject='teaser_' + e['subject'], tag='teaser', speed=1.0))
+        out += shots
+    print(f"cold open: {sum(1 for e in out if e['tag'] == 'teaser')} teaser shots in {len(parts)} part(s)")
+    return out
 
 def main():
     L = jload('locations.json'); I = jload('intents.json'); IDX = {r['file']: r for r in jload('meta/index.json')}
@@ -96,16 +171,20 @@ def main():
     # 2) refine cut points
     edl = []
     for (seg, subj), (key, o) in by_subject.items():
-        r = IDX[o['file']]; words = SP.get(o['file'], {}).get('words', [])
+        r = IDX[o['file']]; words = SP.get(o['file'], {}).get('words', []); segs_ = SP.get(o['file'], {}).get('segs', [])
         w = o['win'] or [0.3, r['dur'] - 0.3]
+        if o.get('speech_ok'): words, segs_ = [], []       # Claude listened: announcements / a guide / chatter, nothing to keep whole
         has_speech = o['file'] in dual or any(w[0] <= ws <= w[1] for ws, _, _ in words)
+        speed = clamp_speed(o['file'], float(o.get('speed', 1.0)), has_speech)
         if o.get('exact'):                                  # Claude/user set the exact moment (e.g. a build-up that
             ss, dd = round(w[0], 2), round(min(w[1], r['dur'] - 0.05) - w[0], 2)   # must not be trimmed): keep as is
         else:
-            ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'))
+            ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'), segs_, speed)
+        dd = round(dd / speed, 2)                           # timeline length (source window / speed)
         if dd < MIN_LEN: continue
         edl.append(dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
-                        hdr=r['hdr'], tag='dual-selfie' if o['file'] in dual else '', note=o.get('note', ''), exact=bool(o.get('exact'))))
+                        hdr=r['hdr'], tag='screen' if r.get('screen') else ('dual-selfie' if o['file'] in dual else ''), note=o.get('note', ''),
+                        exact=bool(o.get('exact')), speed=speed, order=(IDX[o['after']]['time'], 1) if o.get('after') in IDX else (r['time'], 0)))
     # 2b) look-alike pass: different subjects that still LOOK the same (CLIP similarity of the chosen windows) in
     #     the same segment — keep the better one. Repetition is what makes travel edits drag.
     def emb(e):
@@ -120,19 +199,31 @@ def main():
         for e in sh:
             v = emb(e)
             # highlights (q3) are only dropped when nearly identical to another highlight; good shots at `thr`
-            if v is not None and e['tag'] != 'dual-selfie' and not e.get('exact') and any(
+            if v is not None and e['tag'] not in ('dual-selfie', 'screen') and not e.get('exact') and any(
                     k[1] is not None and float(v @ k[1]) > (0.965 if e['q'] == 3 else thr) and k[0]['q'] >= e['q'] for k in keep):
                 dropped.append(e); continue
             keep.append((e, v))
     edl = [e for e in edl if e not in dropped]
     if dropped: print(f'look-alike pass removed {len(dropped)} shots: ' + ', '.join(f"{e['file'][:-4]}({e['subject']})" for e in dropped[:12]) + (' …' if len(dropped) > 12 else ''))
-    # 3) aerial windows
+    # 3) aerial windows (optional: only projects with plane-window / observation-deck / drone footage list them)
     for s in segs:
-        for k, (f, a, b, note) in enumerate(s.get('plane', [])):
+        for k, (f, a, b, note) in enumerate(s.get('aerial', s.get('plane', []))):
             r = IDX[f]
-            edl.append(dict(file=f, ss=a, dur=round(b - a, 2), seg=s['id'], subject=f'plane_{k}', q=3, time=r['time'], portrait=False,
-                            hdr=r['hdr'], tag='plane', note=note, plane_order=k))
-    edl.sort(key=lambda e: (order[e['seg']], e.get('plane_order', 0), e['time'], e['ss']))
+            edl.append(dict(file=f, ss=a, dur=round(b - a, 2), seg=s['id'], subject=f'aerial_{k}', q=3, time=r['time'], portrait=False,
+                            hdr=r['hdr'], tag='aerial', note=note, aerial_order=k, order=(r['time'], 0)))
+    edl.sort(key=lambda e: (order[e['seg']], e.get('aerial_order', 0), e['order'], e['ss']))
+    for e in edl: e.pop('order')
+    edl = [e for e in edl if e['dur'] >= MIN_LEN]
+    part_of = {s['id']: s.get('part') for s in segs}
+    if CFG.get('end_card'):                                 # room for the end card on the last shot of each part
+        last = {}
+        for i, e in enumerate(edl): last[part_of[e['seg']]] = i
+        for i in last.values():
+            e = edl[i]
+            if e.get('speed', 1.0) == 1.0 and e['dur'] < 7.0:
+                e['dur'] = round(min(7.0, IDX[e['file']]['dur'] - 0.05 - e['ss']), 2)
+    if CFG.get('cold_open'):
+        edl = add_teasers(edl, part_of, L.get('teaser', {}))
     total = sum(e['dur'] for e in edl)
     jsave('meta/edl.json', dict(target=CFG.get('target_minutes', 0) * 60, total=round(total, 1), segments=segs, edl=edl))
     lines = ['# Edit list', f'{total / 60:.1f} min, {len(edl)} shots (target ~{CFG.get("target_minutes", "?")} min — a guide, not a rule)', '']
@@ -141,8 +232,18 @@ def main():
         if e['seg'] != cur:
             cur = e['seg']; s = segs[order[cur]]
             lines.append(f"\n## {s.get('place') or s['id']} — {s.get('city', '')}{'  [NEW CITY]' if s.get('new_city') else ''}")
-        lines.append(f"- {int(t // 60):02d}:{t % 60:04.1f}  {e['file']}  {e['ss']:.1f}s +{e['dur']:.1f}s  q{e['q']}  {e['subject']}  {e['note']}")
+        sp = f"  [{e['speed']:g}x]" if e.get('speed', 1.0) != 1.0 else ''
+        lines.append(f"- {int(t // 60):02d}:{t % 60:04.1f}  {e['file']}  {e['ss']:.1f}s +{e['dur']:.1f}s{sp}  q{e['q']}  {e['subject']}  {e['note']}")
         t += e['dur']
+    parts = {}
+    for e in edl: parts.setdefault(segs[order[e['seg']]].get('part'), []).append(e['dur'])
+    if any(p is not None for p in parts):
+        summary = ', '.join(f"part {p}: {sum(d) / 60:.1f} min" for p, d in sorted(parts.items(), key=lambda x: (x[0] is None, x[0] or 0)))
+        lines.insert(2, f'Split into parts — {summary}'); print('  ' + summary)
+        if None in parts: print('  WARNING: some segments have no "part" — they are in no part film')
+    elif total > float(CFG.get('split_minutes', 60)) * 60:
+        print(f'  RECOMMEND SPLITTING: {total / 60:.0f} min is long for one video. Propose parts (by chronology, city, theme '
+              f'or event, each ~20-45 min) to the user; on approval set "part": N on every segment in locations.json.')
     open(P('EDIT_LIST.md'), 'w').write('\n'.join(lines))
     print(f'{len(edl)} shots, {total / 60:.1f} min → meta/edl.json, EDIT_LIST.md')
 

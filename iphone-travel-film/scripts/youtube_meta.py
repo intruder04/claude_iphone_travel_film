@@ -8,7 +8,7 @@ YouTube rules applied: first chapter at 00:00, at least 3 chapters, each ≥ 10 
 tags total ≤ 500 characters; 3 hashtags at the end of the description show above the title."""
 import datetime, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import CFG, P, jload, edl_shots
+from common import CFG, P, jload, edl_shots, part_suffix, PART
 
 def chapters():
     E, edl = edl_shots(); S = {s['id']: s for s in E['segments']}
@@ -45,8 +45,10 @@ def main():
              f'📍 Route: {" → ".join(cities)}', f'🎥 Shot on {", ".join(models) or "iPhone"} · 4K 60fps · HDR', '',
              'CHAPTERS'] + [f'{stamp(a)} {lab}' for a, lab in ch] + ['', 'TODO: 3 hashtags', '',
              '## Tags (comma-separated, ≤ 500 characters)', 'TODO']
-    open(P('renders', 'YOUTUBE.md'), 'w').write('\n'.join(lines))
-    print(f'{len(ch)} chapters → renders/YOUTUBE.md (fill in the TODOs)')
+    if PART: lines.insert(2, f'<!-- this is Part {PART} of a split film: say so in the titles and link the other parts in the description -->')
+    out = f'YOUTUBE{part_suffix()}.md'
+    open(P('renders', out), 'w').write('\n'.join(lines))
+    print(f'{len(ch)} chapters → renders/{out} (fill in the TODOs)')
 
 if __name__ == '__main__':
     main()

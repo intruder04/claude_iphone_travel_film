@@ -1,7 +1,8 @@
 # Landmark callouts (📍 pins that follow buildings)
 
-This is for aerial shots (airplane window, observation deck, drone-like hilltop views) where the user wants the
-famous buildings named, with each label sticking to its building as the camera moves.
+This is optional: only for aerial shots (airplane window, observation deck, drone-like hilltop views) where the
+user wants the famous buildings named, with each label sticking to its building as the camera moves. Trips without
+such footage skip this whole step.
 
 ## 1. Identify landmarks by looking
 1. `sheets.py grid CLIP T CLIP T …` for frames every ~3–5 s of each aerial clip. Read them at full size, and

@@ -98,7 +98,14 @@ def grab(clip, t, w=1920, h=1080, sdr=True):
                               '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True).stdout
     return Image.frombytes('RGB', (w, h), raw[:w * h * 3]) if len(raw) >= w * h * 3 else Image.new('RGB', (w, h))
 
-def edl_shots():
-    """Shots of the current edit (sub-2 s flash cuts dropped)."""
-    E = jload('meta/edl.json')
-    return E, [e for e in E['edl'] if e['dur'] >= 2.0]
+# A finished film over ~1 hour is better as several videos: locations.json segments carry "part": N, and every
+# film-level step (render_all, subtitles srt, youtube_meta) works on one part when TRAVEL_FILM_PART=N is set.
+PART = int(os.environ['TRAVEL_FILM_PART']) if os.environ.get('TRAVEL_FILM_PART') else None
+
+def part_suffix():
+    return f'_Part{PART}' if PART else ''
+
+def edl_shots(part=PART):
+    """Shots of the current edit (sub-2 s flash cuts dropped), only those of `part` when the film is split."""
+    E = jload('meta/edl.json'); seg_part = {s['id']: s.get('part') for s in E['segments']}
+    return E, [e for e in E['edl'] if e['dur'] >= 2.0 and (part is None or seg_part.get(e['seg']) == part)]

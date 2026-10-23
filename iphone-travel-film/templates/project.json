@@ -11,5 +11,10 @@
   "callout_scale": 0.7,
   "music": false,
   "sdr_preview": false,
+  "subtitles": true,
+  "subtitle_language": "",
+  "speech_language": "",
+  "speech_engine": "parakeet",
+  "speech_max": 25,
   "user_agent": "iphone-travel-film-skill/1.0 (personal project)"
 }

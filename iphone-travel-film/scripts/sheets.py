@@ -4,6 +4,9 @@
   sheets.py compact            review/compact_N.jpg  1 frame per clip, 54 per sheet (fast overview of a whole trip)
   sheets.py intent             review/intent_NN.jpg  8 clips per sheet, 6 frames across each clip with timestamps,
                                 plus text Vision read and speech — to decide what each clip is FOR and where its moment is
+  sheets.py orientation       review/orientation.jpg  every vertical-tagged camera clip twice: as tagged (rotated) and
+                                as stored. iPhones often tag clips filmed pointing down (tables, food, floors) as vertical
+                                when they were filmed horizontally — whichever side looks upright decides
   sheets.py grid CLIP T [...]  review/grid/CLIP_T.jpg 1920x1080 frame with a labelled 100 px grid, for pinning
                                 coordinates of landmarks/animals precisely (pairs of CLIP T may repeat)
 """
@@ -75,6 +78,30 @@ def compact():
         S.save(P('review', f'compact_{s // 54}.jpg'), quality=78)
     print('compact sheets in review/')
 
+def orientation():
+    from common import FF, SRC, TONEMAP_CPU
+    import subprocess, io
+    clips = [r for r in jload('meta/index.json') if r['portrait'] and not r.get('screen')]
+    if not clips: print('no vertical-tagged camera clips'); return
+    def frame(r, auto):
+        vf = 'scale=-2:220' + (',' + TONEMAP_CPU if r['hdr'] else '')
+        b = subprocess.run([FF, '-v', 'error', *([] if auto else ['-noautorotate']), '-ss', f"{r['dur'] / 2:.2f}",
+                            '-i', os.path.join(SRC, r['file']), '-frames:v', '1', '-vf', vf, '-f', 'image2pipe', '-c:v', 'mjpeg', '-'],
+                           capture_output=True).stdout
+        return Image.open(io.BytesIO(b)).convert('RGB') if b else Image.new('RGB', (124, 220))
+    F = _font(15); rows = []
+    for r in clips:
+        a, b = frame(r, True), frame(r, False)
+        row = Image.new('RGB', (a.width + b.width + 30, 244), (30, 30, 30)); row.paste(a, (0, 22)); row.paste(b, (a.width + 30, 22))
+        ImageDraw.Draw(row).text((4, 3), f"{r['file']}   left: as tagged   right: as stored", font=F, fill=(255, 220, 0)); rows.append(row)
+    W = max(r.width for r in rows); C = 3
+    for k in range(0, len(rows), 30):
+        chunk = rows[k:k + 30]; S = Image.new('RGB', (W * C, 244 * ((len(chunk) + C - 1) // C)), (30, 30, 30))
+        for i, row in enumerate(chunk): S.paste(row, ((i % C) * W, (i // C) * 244))
+        S.save(P('review', f'orientation_{k // 30}.jpg'), quality=82)
+    print(f'{len(clips)} vertical-tagged clips → review/orientation_*.jpg. Add every clip whose right side is the upright one '
+          f'to "ignore_rotation_tag" in project.json, then re-run index.py')
+
 def grid(clip, t):
     im = grab(clip, float(t)); d = ImageDraw.Draw(im); F = _font(18)
     for x in range(100, 1920, 100):
@@ -91,6 +118,7 @@ if __name__ == '__main__':
     if cmd == 'clips': clips()
     elif cmd == 'compact': compact()
     elif cmd == 'intent': intent()
+    elif cmd == 'orientation': orientation()
     elif cmd == 'grid':
         a = sys.argv[2:]
         for c, t in zip(a[::2], a[1::2]): grid(c if '.' in c else c + '.MOV', t)

@@ -12,7 +12,7 @@ Decode/encode use the M4 media engines (VideoToolbox). Benchmarks on this Mac (4
 import os, subprocess, sys, threading, time, tempfile
 import psutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import FF, FFPROBE, ENV, VK, DEC, SRC, src, P, HLG_TAGS, sdr_gpu
+from common import FF, FFPROBE, ENV, VK, DEC, SRC, src, P, HLG_TAGS, sdr_gpu, probe
 from gfx import W, H, blank
 
 TMP = P('tmp')
@@ -36,7 +36,16 @@ def run(cmd, label, stdin=None):
     threading.Thread(target=_watch, args=(p, label), daemon=True).start()
     return p
 
-def video_chain(portrait, hdr, rot=0.0):
+def video_chain(portrait, hdr, rot=0.0, speed=1.0):
+    chain = _video_chain(portrait, hdr, rot)
+    if speed == 1.0: return chain
+    # speed change before the 60 fps resample: slow motion repeats source frames (0.5x of 60 fps = 30 distinct
+    # frames/s, still smooth); a speed-up first blends up to 4 neighbouring frames (natural motion blur), then fps drops
+    # the rest — without the blend, sped-up handheld footage strobes
+    pre = (f'tmix=frames={min(4, int(round(speed)))},' if speed >= 2 else '') + f'setpts=(PTS-STARTPTS)/{speed:g},'
+    return chain.replace('[0:v]fps=', '[0:v]' + pre + 'fps=', 1)
+
+def _video_chain(portrait, hdr, rot=0.0):
     norm = '' if hdr else ',zscale=tin=bt709:t=arib-std-b67:pin=bt709:p=bt2020:min=bt709:m=bt2020nc:npl=203'
     if not portrait:
         if rot:
@@ -71,13 +80,15 @@ def render_overlay(fn, t0, t1, out):
     return out
 
 def render(seg, out, overlay_fn=None, ov_range=None, bitrate='60M'):
-    """seg: dict(file, ss, dur, portrait, hdr, fade_in, fade_out, audio, volume)."""
+    """seg: dict(file, ss, dur, portrait, hdr, fade_in, fade_out, audio, volume, speed).
+    dur is the length on the film's timeline; with speed != 1 the source range is dur * speed long."""
     ss, dur = seg['ss'], seg['dur']; n = int(round(dur * FPS))
-    fc = video_chain(seg['portrait'], seg['hdr'], seg.get('rotate', 0.0))
+    speed = float(seg.get('speed', 1.0)); src_dur = dur * speed
+    fc = video_chain(seg['portrait'], seg['hdr'], seg.get('rotate', 0.0), speed)
     # video and audio come from two separate demuxers of the same file: with one shared demuxer ffmpeg keeps
     # decoding 4K video ahead to feed the (fast) audio path and buffers GBs of frames while the overlay waits
     vsrc = ['-i', seg['source']] if seg.get('source') else src(seg['file'])     # e.g. pre-rendered callout clip
-    inputs = [*DEC, '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-an', *vsrc]
+    inputs = [*DEC, '-ss', f'{ss:.3f}', '-t', f'{src_dur:.3f}', '-an', *vsrc]
     ov = None; last = 'v'
     if overlay_fn:
         t0, t1 = ov_range or (0, dur)
@@ -98,9 +109,17 @@ def render(seg, out, overlay_fn=None, ov_range=None, bitrate='60M'):
     DECLICK = 0.015
     afi, afo = (fi if fi else DECLICK), (fo if fo else DECLICK)
     af = [f'afade=t=in:st=0:d={afi}:curve=qsin', f'afade=t=out:st={dur - afo:.3f}:d={afo}:curve=qsin']
-    if seg.get('volume', 1.0) != 1.0: af.append(f"volume={seg['volume']}")
+    vol = seg.get('volume', 1.0) * (0.5 if speed != 1.0 else 1.0)
+    if vol != 1.0: af.append(f'volume={vol:g}')
     ai = 2 if ov else 1
-    if seg.get('audio', True): inputs += ['-vn', '-ss', f'{ss:.3f}', '-t', f'{dur:.3f}', '-i', os.path.join(SRC, seg['file'])]
+    # speed-changed shots keep their real-time ambience (the middle of the source range, -6 dB): slowed or sped-up
+    # sound is distracting, and speech is never speed-changed (edit_plan.py refuses it)
+    ass = ss + max(0.0, (src_dur - dur) / 2)
+    has_audio = any(st['codec_type'] == 'audio' for st in probe(seg['file'])['streams'])
+    if seg.get('audio', True):
+        if has_audio: inputs += ['-vn', '-ss', f'{ass:.3f}', '-t', f'{dur:.3f}', '-i', os.path.join(SRC, seg['file'])]
+        else:      # clip recorded without sound: silence keeps every shot's audio track, so the join stays in sync
+            inputs += ['-f', 'lavfi', '-t', f'{dur:.3f}', '-i', 'anullsrc=r=48000:cl=stereo']
     cmd = [FF, '-v', 'error', '-y', *inputs, '-filter_complex', fc, '-map', '[vo]', '-frames:v', str(n)]
     if seg.get('audio', True):
         cmd += ['-map', f'{ai}:a:0', '-af', ','.join(af) + ',aresample=48000,apad', '-ac', '2', '-t', f'{dur:.3f}', '-c:a', 'pcm_s16le']
