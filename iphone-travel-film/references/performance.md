@@ -23,8 +23,13 @@ instead of letting it freeze the machine.
 - Long steps run in a visible terminal tab with tqdm progress bars.
 - Decode once at low resolution and cache: frames, metrics, camera motion, Vision results, speech and CLIP
   embeddings are all reused by later steps.
-- Apple Vision and tracking use one process per core. CLIP and Whisper use the GPU. Reverse geocoding is
+- Apple Vision and tracking use one process per core. CLIP and speech recognition (Parakeet / Whisper) use the GPU. Reverse geocoding is
   limited to 1 request per second by the Nominatim usage policy.
+
+## One media-engine job at a time
+Never run analysis (analyze.py, shots.py, sheets) while render_all.py is running: both use VideoToolbox, and the
+encoder fails to open ("Error while opening encoder", "Generic error in an external library"). Shots retry twice,
+but finish one job before starting the other. Never rebuild the edit plan while a render is running.
 
 ## Waiting on jobs
 Match long jobs by their exact script path (`pgrep -f 'scripts/render_all.py'`), never by a bare word: a wait

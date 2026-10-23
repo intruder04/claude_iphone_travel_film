@@ -280,9 +280,9 @@ def title_cinematic(info, t, dur=5.0):
     for txt, fs in lines:
         while text_w(d, txt, fs) > W * 0.64 and fs.size > 40: fs = sf(fs.size - 4, 'Medium')
         d.text(((W - text_w(d, txt, fs)) / 2, yy + (1 - q) * 30), txt, font=fs, fill=rgba(SOFT, a * q)); yy += fs.size * 1.35
-    top = info.get('city_local') or (info.get('country', '').upper() if info.get('new_city') else '')
+    top = info.get('part') or info.get('city_local') or (info.get('country', '').upper() if info.get('new_city') else '')
     if top:
-        fj = local_font(70) if info.get('city_local') else sf(60, 'Semibold'); jw = text_w(d, top, fj, 30)
+        fj = local_font(70) if info.get('city_local') and not info.get('part') else sf(60, 'Semibold'); jw = text_w(d, top, fj, 30)
         draw_tracked(d, ((W - jw) / 2, cy - 300), top, fj, rgba(SOFT, a * ease_out((t - 0.2) / 0.8)), 30)
     return img
 
@@ -336,3 +336,103 @@ def title_vertical(info, t, dur=5.0):
 
 STYLES = {'A_lower_third': title_lower_third, 'B_cinematic': title_cinematic,
           'C_map_pin': title_pin, 'D_vertical': title_vertical}
+
+# =====================================================================
+# Subtitles for what is said on camera (subtitles.json, see subtitles.py)
+# =====================================================================
+SUB_SIZE = int(H * 0.046 * float(CFG.get('subtitle_scale', 1.0)))   # ~100 px at 4K: readable on a phone
+SUB_MAXW = W * 0.72                                                   # ≤ ~42 characters per line
+_SUB_FONT = {}
+def _sub_font():
+    if 'f' not in _SUB_FONT:
+        lang = CFG.get('subtitle_language', '')
+        if lang in ('ja', 'zh', 'ko'):                    # CJK subtitles need a CJK font
+            sans = _LOCAL[lang][0]; f = next((ImageFont.truetype(F + n, SUB_SIZE) for n in sans if os.path.exists(F + n)), None)
+        else: f = None
+        _SUB_FONT['f'] = f or sf(SUB_SIZE, 'Semibold')    # San Francisco covers Latin, Cyrillic and Greek
+    return _SUB_FONT['f']
+
+def wrap_lines(text, maxw=SUB_MAXW, font=None):
+    """Greedy word wrap into ≤ 2 balanced lines (pixel widths); longer cues should be split upstream."""
+    f = font or _sub_font(); d = ImageDraw.Draw(Image.new('L', (1, 1)))
+    words = text.split()
+    if text_w(d, text, f) <= maxw or len(words) < 2: return [text]
+    best = None                                            # most balanced break that fits
+    for i in range(1, len(words)):
+        a, b = ' '.join(words[:i]), ' '.join(words[i:])
+        wa, wb = text_w(d, a, f), text_w(d, b, f)
+        cost = max(wa, wb) + (0 if max(wa, wb) <= maxw else 1e6)
+        if best is None or cost < best[0]: best = (cost, [a, b])
+    return best[1]
+
+def subtitle(cues, t, top=False):
+    """Bottom-centred subtitle for local time t. cues: [{"start", "end", "text"}] in shot seconds.
+    White (75 % HLG) semibold text on a near-black rounded box per line (≥ 15:1 contrast on any footage),
+    plus a thin dark outline. top=True moves it to the top while a lower-third title occupies the bottom."""
+    cue = next((c for c in cues if c['start'] - 0.06 <= t < c['end'] + 0.06), None)
+    if cue is None: return None
+    a = env(t, cue['start'] - 0.06, cue['end'] + 0.06, 0.12)
+    if a <= 0.01: return None
+    f = _sub_font(); img = blank(); d = ImageDraw.Draw(img)
+    lines = wrap_lines(cue['text']); padx, gap, m = int(SUB_SIZE * 0.42), int(SUB_SIZE * 0.14), SUB_SIZE * 0.2
+    # Centre the band from the baseline to the capital height (where H, t, l, d end) in the box and let descenders
+    # (g, p, y) hang into the bottom padding. Centring on the font's ascender or on the full "Hg" ink box makes
+    # typical lines, which have few descenders, look too high (user feedback, measured on rendered frames).
+    cap = -d.textbbox((0, 0), 'H', font=f, anchor='ls')[1]
+    dsc = d.textbbox((0, 0), 'g', font=f, anchor='ls')[3]; band = cap
+    lh = max(cap + 2 * SUB_SIZE * 0.27, band + 2 * dsc + 2 * m, 2 * cap - band + 2 * m)
+    base = lh / 2 + band / 2                                  # baseline offset from the box top
+    total = len(lines) * lh + (len(lines) - 1) * gap
+    y = H * (SAFE + 0.015) if top else H * (1 - SAFE - 0.015) - total
+    for ln in lines:
+        l_, _, r_, _ = d.textbbox((0, 0), ln, font=f, anchor='ls'); tw = r_ - l_
+        x = (W - tw) / 2
+        d.rounded_rectangle((x - padx, y, x + tw + padx, y + lh), int(SUB_SIZE * 0.22), fill=(0, 0, 0, int(200 * a)))
+        d.text((x - l_, y + base), ln, font=f, anchor='ls', fill=rgba(WHITE, a),
+               stroke_width=max(2, SUB_SIZE // 40), stroke_fill=(0, 0, 0, int(255 * a)))
+        y += lh + gap
+    return img
+
+# =====================================================================
+# Speed badge for sped-up shots ("2×", "4×") — top right, the whole shot
+# =====================================================================
+def speed_badge(speed, t, dur):
+    """Dark rounded pill with a ▶▶ glyph and the factor, top-right inside the title-safe area. Fades in and out with
+    the shot so the viewer always knows the footage runs faster than real time."""
+    a = env(t, 0.0, dur, 0.3)
+    if a <= 0.01: return None
+    img = blank(); d = ImageDraw.Draw(img)
+    s = int(H * 0.040 * float(CFG.get('subtitle_scale', 1.0)))            # cap height band ~ subtitle size
+    f = sf(s, 'Bold'); txt = f"{speed:g}×"
+    cap = -d.textbbox((0, 0), 'H', font=f, anchor='ls')[1]
+    l_, _, r_, _ = d.textbbox((0, 0), txt, font=f, anchor='ls'); tw = r_ - l_
+    tri = cap * 0.62; gap = s * 0.30; pad = s * 0.42; bh = cap + 2 * s * 0.36
+    bw = pad + 2 * tri * 0.86 + gap + tw + pad
+    x1, y0 = W * (1 - SAFE), H * SAFE; x0 = x1 - bw
+    d.rounded_rectangle((x0, y0, x1, y0 + bh), int(bh / 2), fill=(0, 0, 0, int(190 * a)))
+    cy = y0 + bh / 2; tx = x0 + pad
+    for k in range(2):                                                   # ▶▶ drawn as two triangles (font-independent)
+        bx = tx + k * tri * 0.86
+        d.polygon([(bx, cy - tri / 2), (bx, cy + tri / 2), (bx + tri * 0.86, cy)], fill=rgba(WHITE, a))
+    d.text((tx + 2 * tri * 0.86 + gap - l_, cy + cap / 2), txt, font=f, anchor='ls', fill=rgba(WHITE, a))
+    return img
+
+# =====================================================================
+# End card — "Next: Part N" in a split film, trip facts at the very end
+# =====================================================================
+def end_card(info, t, dur):
+    """Centred card over the last shot: a big line and a small line on a soft scrim; rises in, fades with the shot."""
+    a = env(t, 0, dur + 1.0, 0.7)                 # stays until the shot's own fade to black takes it away
+    if a <= 0.01: return None
+    img = blank(); soft_scrim(img, (W * 0.18, H * 0.34, W * 0.82, H * 0.66), 0.72 * a, 200); d = ImageDraw.Draw(img)
+    p = ease_out(t / 0.9); fb = sf(170, 'Bold'); fs = sf(76, 'Medium')
+    big, small = info['big'], info.get('small', '')
+    while text_w(d, big, fb) > W * 0.6 and fb.size > 80: fb = sf(fb.size - 8, 'Bold')
+    while text_w(d, small, fs) > W * 0.6 and fs.size > 40: fs = sf(fs.size - 4, 'Medium')
+    cy = H * 0.47 + (1 - p) * 40
+    d.text(((W - text_w(d, big, fb)) / 2, cy - fb.size), big, font=fb, fill=rgba(WHITE, a * p))
+    rule = ease_in_out((t - 0.3) / 0.9) * 520
+    d.rectangle((W / 2 - rule, cy + 70, W / 2 + rule, cy + 76), fill=rgba(ACCENT, a))
+    q = ease_out((t - 0.6) / 0.8)
+    if small: d.text(((W - text_w(d, small, fs)) / 2, cy + 120 + (1 - q) * 30), small, font=fs, fill=rgba(SOFT, a * q))
+    return img

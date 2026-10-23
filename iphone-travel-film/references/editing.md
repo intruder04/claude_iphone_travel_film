@@ -3,7 +3,7 @@
 ## Understanding a clip
 For every clip, Claude looks at six frames across its length (`sheets.py intent`), plus:
 - text Apple Vision read in the picture (shop names, station signs, temple boards)
-- speech (MLX-Whisper, word timestamps)
+- speech (Parakeet v3 or Whisper on MLX, word and sentence timestamps)
 - camera motion and in-frame activity (`shots.py`)
 - scene changes (PySceneDetect)
 
@@ -33,9 +33,17 @@ travel edits drag: five takes of the same view become one.
 - Inside a place, chronological order alternates naturally between wide and close and still and moving. If
   three similar static shots end up in a row, drop or move the weakest one.
 
-## Aerial openings
-Use only steady holds: establishing wide shot first, then the landmarks, each with tracked 📍 callouts. Never
-use the zoom-in or zoom-out parts.
+## Talking to the camera
+Shots where the filmmaker speaks keep whole sentences: with subtitles on, a cut inside a spoken sentence moves to
+its start or end (up to 6 s away), else the sentence is dropped. Such shots may run up to `speech_max` (25 s).
+
+## Screen recordings
+Used only next to the camera clip they explain (`"after"` on the intent), and only the seconds that make the
+point. Vertical recordings sit on a blurred fill like any vertical clip.
+
+## Aerial openings (optional)
+Only when the trip has aerial footage. Use only steady holds: establishing wide shot first, then the landmarks,
+each with tracked 📍 callouts. Never use the zoom-in or zoom-out parts.
 
 ## Sound at cuts
 Only fade audio where the picture fades (film start/end, city changes). Every other cut gets a ~15 ms de-click fade:

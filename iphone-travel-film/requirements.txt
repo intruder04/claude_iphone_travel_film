@@ -9,4 +9,5 @@ open_clip_torch
 pyobjc-framework-Vision
 pyobjc-framework-Quartz
 mlx-whisper
+parakeet-mlx
 scenedetect
