@@ -90,6 +90,38 @@ def face_centered(img, aspect=1.0):
     return img.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch)))
 
 
+# ------------------------------------------------------------------ keep text off faces
+FACE_HITS = []          # (style, overlap px) when no face-free spot existed — reported by make()
+
+def face_boxes(img, pad=0.22):
+    """Faces (Apple Vision) in a composed thumbnail background, as pixel boxes padded to cover hair and chin.
+    Tiny faces (crowds in the background) are ignored: only faces a viewer would notice matter."""
+    import Vision
+    from Foundation import NSURL
+    tmp = P('tmp', 'thumb_faces.jpg'); img.convert('RGB').save(tmp, quality=90)
+    h = Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(tmp), None)
+    rq = Vision.VNDetectFaceRectanglesRequest.alloc().init(); h.performRequests_error_([rq], None)
+    W_, H_ = img.size; out = []
+    for o in rq.results() or []:
+        b = o.boundingBox(); w, hh = b.size.width * W_, b.size.height * H_
+        if hh < H_ * 0.07: continue
+        x, y = b.origin.x * W_, (1 - b.origin.y - b.size.height) * H_
+        out.append((x - w * pad, y - hh * (pad + 0.3), x + w * (1 + pad), y + hh * (1 + pad)))
+    return out
+
+def overlap(box, faces):
+    return sum(max(0, min(box[2], f[2]) - max(box[0], f[0])) * max(0, min(box[3], f[3]) - max(box[1], f[1])) for f in faces)
+
+def choose_spot(cands, faces, style):
+    """cands: [(box, layout), ...] in order of preference → the first that covers no face, else the least bad."""
+    for box, lay in cands:
+        if overlap(box, faces) == 0: return lay
+    box, lay = min(cands, key=lambda c: overlap(c[0], faces))
+    core = [(f[0] + (f[2] - f[0]) * 0.18, f[1] + (f[3] - f[1]) * 0.25, f[2] - (f[2] - f[0]) * 0.18, f[3] - (f[3] - f[1]) * 0.18) for f in faces]
+    if overlap(box, core): FACE_HITS.append((style, int(overlap(box, core))))   # only text on the face itself is a problem
+    return lay
+
+
 # ------------------------------------------------------------------ photo fix for thumbnail frames
 def horizon_angle(img):
     """Camera roll in degrees from Apple Vision's horizon detector (None if no horizon found)."""
@@ -263,30 +295,45 @@ def style_pop(big, words, badge_text):
     subj = grade(src, 1.25, 1.1, 1.08).convert('RGBA')
     subj.putalpha(m.filter(ImageFilter.GaussianBlur(2)))      # soft edge, no outline/glow (keeps it natural)
     img.alpha_composite(subj)
-    d = ImageDraw.Draw(img); x0 = 48
+    d = ImageDraw.Draw(img)
     w1, w2 = (words + [''])[:2]
-    f1 = fit_font(d, w1, condensed, TW * 0.46, 230); text_stroke(d, (x0, 130), w1, f1, fill=(255, 255, 255), sw=10)
-    y2 = 130 + f1.size * 0.95 + max(30, f1.size * 0.16)   # breathing room between headline and sub-line
-    if w2:
-        f2 = fit_font(d, w2, condensed, TW * 0.46, 120); second_line(d, x0, y2, w2, f2); y2 += f2.size * 1.15
-    route_dots(img, (x0 + 20, min(TH - 120, y2 + 60)), TW * 0.38)
-    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(x0), 44))
+    faces = face_boxes(img); cands = []                  # top-left, bottom-left, top-right, bottom-right — off the face;
+    for mw in (0.46, 0.34):                              # then the same corners with smaller text
+        f1 = fit_font(d, w1, condensed, TW * mw, 230); f2 = fit_font(d, w2, condensed, TW * mw, 120) if w2 else None
+        tw = max(d.textlength(w1, font=f1), d.textlength(w2, font=f2) if f2 else 0)
+        hgt = f1.size * 0.95 + max(30, f1.size * 0.16) + (f2.size * 1.15 if f2 else 0)
+        for x0, y1 in ((48, 130), (48, TH - 60 - hgt), (TW - 48 - tw, 130), (TW - 48 - tw, TH - 60 - hgt)):
+            cands.append(((x0, y1, x0 + tw, y1 + hgt), (x0, y1, f1, f2)))
+    x0, y1, f1, f2 = choose_spot(cands, faces, 'pop')
+    text_stroke(d, (x0, y1), w1, f1, fill=(255, 255, 255), sw=10)
+    y2 = y1 + f1.size * 0.95 + max(30, f1.size * 0.16)   # breathing room between headline and sub-line
+    if f2: second_line(d, x0, y2, w2, f2); y2 += f2.size * 1.15
+    if y1 < TH / 2: route_dots(img, (x0 + 20, min(TH - 120, y2 + 60)), TW * 0.38)
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (48, 44))      # top-left; headline starts below it
     return img
 
 def style_cinematic(src, words, badge_text):
     """Full-bleed hero landscape, filmic grade, one giant word, journey line under it."""
     img = grade(src, 1.18, 1.15, 1.0).convert('RGBA')
-    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((0, int(TH * 0.45), TW, TH), fill=255)
+    faces = face_boxes(img); d = ImageDraw.Draw(img); w = words[0]; cands = []
+    for maxw, xs in ((0.86, (0.5,)), (0.46, (0.27, 0.73))):      # centred and big first; beside a face if needed
+        f = fit_font(d, w, lambda s: sf(s, 'Black'), TW * maxw, 260)
+        fs = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * maxw * 0.8, 64) if len(words) > 1 else None
+        tw = max(d.textlength(w, font=f), d.textlength(words[1].upper(), font=fs) if fs else 0)
+        for xc in xs:
+            for by in (0.70, 0.36):
+                y0, y1 = TH * by - f.size * 0.78, TH * by + (52 + fs.size * 1.45 if fs else 10)
+                cands.append(((TW * xc - tw / 2 - 20, y0, TW * xc + tw / 2 + 20, y1), (f, fs, TW * xc, TH * by)))
+    f, fs, xc, base = choose_spot(cands, faces, 'cinematic')
+    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((0, int(max(0, base - TH * 0.25)), TW, int(min(TH, base + TH * 0.3))), fill=255)
     vg = vg.filter(ImageFilter.GaussianBlur(120)); sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.point(lambda v: v * 0.8)); img.alpha_composite(sh)
-    d = ImageDraw.Draw(img); w = words[0]
-    f = fit_font(d, w, lambda s: sf(s, 'Black'), TW * 0.86, 260)
-    shadow_text(img, (TW / 2, TH * 0.70), w, f, anchor='ms', blur=16, alpha=200)
-    if len(words) > 1:
-        fs = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 64)
+    d = ImageDraw.Draw(img)
+    shadow_text(img, (xc, base), w, f, anchor='ms', blur=16, alpha=200)
+    if fs:
         if 'yellow_bar' in ACC:
-            boxed_text(d, TW / 2, TH * 0.70 + 52, words[1].upper(), fs, YELLOW, (10, 10, 10), center=True)
+            boxed_text(d, xc, base + 52, words[1].upper(), fs, YELLOW, (10, 10, 10), center=True)
         else:
-            shadow_text(img, (TW / 2, TH * 0.70 + 64), words[1].upper(), fs, fill=YELLOW, anchor='ms', blur=8)
+            shadow_text(img, (xc, base + 64), words[1].upper(), fs, fill=YELLOW, anchor='ms', blur=8)
     route_dots(img, (TW * 0.3, 70), TW * 0.4)
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
@@ -301,14 +348,7 @@ def style_collage(srcs, words, badge_text):
         panel = grade(cover(s, int(TW / n + sk * 2), TH), 1.25, 1.1).convert('RGBA')
         layer = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); layer.paste(panel, (int(x0 - sk), 0)); img.paste(layer, (0, 0), m)
         if k: ImageDraw.Draw(img).line([(x0 + sk / 2, 0), (x0 - sk / 2, TH)], fill=(255, 255, 255), width=12)
-    d = ImageDraw.Draw(img); w = words[0]
-    f = fit_font(d, w, condensed, TW * 0.8, 190); tw = d.textlength(w, font=f)
-    by0 = TH * 0.30
-    yb = 'yellow_bar' in ACC
-    box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
-    if len(words) > 1:
-        f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.7, 60)
-        text_stroke(d, (TW / 2, box[3] + 58), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+    _title_block(img, words, TH * 0.40, size=190, style='collage')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
@@ -352,6 +392,12 @@ def style_minimal(src, words, badge_text, face_big=None, vivid=False):
     d = ImageDraw.Draw(img)
     fh = fit_font(d, words[0].lower(), lambda s_: sf(s_, 'Bold'), TW * 0.6, 170)
     l, t, r, b = d.textbbox((0, 0), words[0].lower(), font=fh); hx, hy = 50, TH - 46 - (b - t) - t
+    blk = (hx, hy + t - (110 if len(words) > 1 else 0), hx + max(r - l, TW * 0.5), hy + b)
+    faces = face_boxes(img) if face_big is None else []
+    if overlap(blk, faces):                            # a face sits bottom-left: lift both lines to the top-left
+        lift = (blk[1] - (104 + (110 if len(words) > 1 else 0)) + (110 if len(words) > 1 else 0))
+        hy -= lift if overlap((blk[0], blk[1] - lift, blk[2], blk[3] - lift), faces) == 0 else 0
+        if overlap((blk[0], blk[1] - lift, blk[2], blk[3] - lift), faces): FACE_HITS.append(('minimal', 1))
     if len(words) > 1:
         fsub = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.62, 64)
         sl, st, sr, sb = d.textbbox((0, 0), words[1].upper(), font=fsub)
@@ -365,16 +411,31 @@ def style_minimal(src, words, badge_text, face_big=None, vivid=False):
     ImageDraw.Draw(img).text((hx, hy), words[0].lower(), font=fh, fill=(255, 255, 255), stroke_width=6, stroke_fill=(10, 10, 10))
     return img
 
-def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190):
-    """Centered headline on a yellow (or dark) rounded block + white second line. Used by the collages."""
+def _title_block(img, words, cy=None, yellow=True, max_w=0.8, size=190, band=False, style='title'):
+    """Headline on a yellow (or dark) rounded block + white second line. Used by the collages. Faces in the
+    composed background are detected first and the block moves (up, down, then smaller beside the face) so it never
+    covers one. band=True draws a dark band behind it (strips style)."""
     d = ImageDraw.Draw(img); w = words[0]; cy = TH * 0.42 if cy is None else cy
-    f = fit_font(d, w, condensed, TW * max_w, size); tw = d.textlength(w, font=f)
+    faces = face_boxes(img); cands = []
+    for mw, xs in ((max_w, (0.5,)), (0.44, (0.26, 0.74))):
+        f = fit_font(d, w, condensed, TW * mw, size); tw = d.textlength(w, font=f)
+        f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * mw * 0.94, 58) if len(words) > 1 else None
+        l_, t_, r_, b_ = d.textbbox((0, 0), w, font=f); bh = (b_ - t_) + 2 * f.size * 0.16
+        tot = bh + (50 + f2.size * 1.2 if f2 else 0); ww = max(tw + f.size * 0.6, d.textlength(words[1].upper(), font=f2) if f2 else 0)
+        for c in dict.fromkeys((cy, TH * 0.24, TH * 0.74, TH * 0.5)):
+            top = min(max(c - tot / 2, 96), TH - 24 - tot)          # below the badge, inside the frame
+            cands.append(((TW * xs[0] - ww / 2, top, TW * xs[0] + ww / 2, top + tot), (f, f2, TW * xs[0], top, bh)) if len(xs) == 1 else
+                         ((TW * xs[0] - ww / 2, top, TW * xs[0] + ww / 2, top + tot), (f, f2, TW * xs[0], top, bh)))
+            if len(xs) > 1:
+                cands.append(((TW * xs[1] - ww / 2, top, TW * xs[1] + ww / 2, top + tot), (f, f2, TW * xs[1], top, bh)))
+    f, f2, xc, top, bh = choose_spot(cands, faces, style)
+    if band:
+        b = Image.new('RGBA', (TW, int(bh + (50 + f2.size * 1.2 if f2 else 0) + 60)), (0, 0, 0, 150)); img.alpha_composite(b, (0, int(top - 30)))
+        d = ImageDraw.Draw(img)
     yb = yellow and 'yellow_bar' in ACC
-    l_, t_, r_, b_ = d.textbbox((0, 0), w, font=f); by0 = cy - ((b_ - t_) + 2 * f.size * 0.16) / 2
-    box = boxed_text(d, TW / 2, by0, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
-    if len(words) > 1:
-        f2 = fit_font(d, words[1].upper(), lambda s_: sf(s_, 'Heavy'), TW * 0.75, 58)
-        text_stroke(d, (TW / 2, box[3] + 50), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
+    box = boxed_text(d, xc, top, w, f, YELLOW if yb else (15, 15, 18), (10, 10, 10) if yb else (255, 255, 255), radius=18, center=True)
+    if f2:
+        text_stroke(d, (xc, box[3] + 50), words[1].upper(), f2, fill=(255, 255, 255), sw=7, anchor='mt')
 
 def _panel(img, src, box, border=10):
     x0, y0, x1, y1 = [int(v) for v in box]
@@ -385,7 +446,7 @@ def style_grid4(srcs, words, badge_text):
     """2x2 grid of four places, title block over the centre."""
     img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255))
     for k, s in enumerate(srcs[:4]): _panel(img, s, ((k % 2) * TW / 2, (k // 2) * TH / 2, (k % 2 + 1) * TW / 2, (k // 2 + 1) * TH / 2), 6)
-    _title_block(img, words, TH * 0.47, size=170)
+    _title_block(img, words, TH * 0.47, size=170, style='grid4')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (30, 26))
     return img
 
@@ -396,7 +457,7 @@ def style_split(srcs, words, badge_text):
     m = Image.new('L', (TW, TH), 0); ImageDraw.Draw(m).polygon([(TW * 0.58, 0), (TW, 0), (TW, TH), (TW * 0.42, TH)], fill=255)
     img.paste(grade(cover(b), 1.22, 1.1).convert('RGBA'), (0, 0), m)
     ImageDraw.Draw(img).line([(TW * 0.58, 0), (TW * 0.42, TH)], fill=(255, 255, 255), width=14)
-    _title_block(img, words, TH * 0.70, size=170)
+    _title_block(img, words, TH * 0.70, size=170, style='split')
     route_dots(img, (TW * 0.3, 70), TW * 0.4)
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
@@ -405,21 +466,43 @@ def style_strips(srcs, words, badge_text):
     """Four tall vertical strips (film-strip look), title band across the middle."""
     img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); n = min(4, len(srcs)); w = TW / n
     for k, s in enumerate(srcs[:n]): _panel(img, s, (k * w, 0, (k + 1) * w, TH), 6)
-    band = Image.new('RGBA', (TW, int(TH * 0.36)), (0, 0, 0, 150)); img.alpha_composite(band, (0, int(TH * 0.30)))
-    _title_block(img, words, TH * 0.44, size=170)
+    _title_block(img, words, TH * 0.44, size=170, band=True, style='strips')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (30, 26))
     return img
 
-def style_mosaic(srcs, words, badge_text):
-    """One big hero panel left + two stacked panels right, title on the hero."""
-    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); L = TW * 0.62
-    _panel(img, srcs[0], (0, 0, L, TH), 6); _panel(img, srcs[1], (L, 0, TW, TH / 2), 6); _panel(img, srcs[2], (L, TH / 2, TW, TH), 6)
-    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((0, int(TH * 0.5), int(L), TH), fill=255)
+def _hero_text(img, words, x0, w, faces, style):
+    """Headline + second line on a hero panel x0..x0+w: at its bottom, else its top — wherever no face is.
+    Returns False when both would cover a face (the caller then moves the face to a small panel)."""
+    d = ImageDraw.Draw(img)
+    f1 = fit_font(d, words[0], condensed, w * 0.85, 200)
+    f2 = fit_font(d, words[1].upper(), condensed, w * 0.8, 100) if len(words) > 1 else None
+    tw = max(d.textlength(words[0], font=f1), d.textlength(words[1].upper(), font=f2) if f2 else 0)
+    hgt = f1.size * 1.05 + (f2.size * 1.25 + 30 if f2 else 0)
+    spots = [(TH - 120 - hgt, 'bottom'), (104, 'top')]
+    free = [(y, k) for y, k in spots if overlap((x0, y, x0 + tw, y + hgt), faces) == 0]
+    if not free: return False
+    y, k = free[0]
+    vg = Image.new('L', (TW, TH), 0)
+    ImageDraw.Draw(vg).rectangle((int(x0 - 48), int(TH * 0.5) if k == 'bottom' else 0, int(x0 - 48 + w), TH if k == 'bottom' else int(TH * 0.5)), fill=255)
     sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
-    d = ImageDraw.Draw(img); x0 = 48
-    f1 = fit_font(d, words[0], condensed, L * 0.85, 200); text_stroke(d, (x0, TH - 150 - f1.size * 1.6), words[0], f1, sw=9)
-    if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, L * 0.8, 100))
-    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
+    d = ImageDraw.Draw(img); text_stroke(d, (x0, y), words[0], f1, sw=9)
+    if f2: second_line(d, x0, y + f1.size * 1.0 + 30, words[1].upper(), f2)
+    return True
+
+def style_mosaic(srcs, words, badge_text, mirror=False):
+    """One big hero panel + two stacked panels, title on the hero (mirror: hero on the right). The title goes at the
+    bottom or top of the hero, whichever is free of faces; if neither is, the face frame moves to a small panel."""
+    L = TW * (0.38 if mirror else 0.62)
+    for order in (srcs[:3], [srcs[1], srcs[0], srcs[2]]):
+        img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255))
+        hero = (L, 0, TW, TH) if mirror else (0, 0, L, TH)
+        small = [(0, 0, L, TH / 2), (0, TH / 2, L, TH)] if mirror else [(L, 0, TW, TH / 2), (L, TH / 2, TW, TH)]
+        _panel(img, order[0], hero, 6); _panel(img, order[1], small[0], 6); _panel(img, order[2], small[1], 6)
+        x0 = int(hero[0] + 48); w = hero[2] - hero[0]
+        if _hero_text(img, words, x0, w, face_boxes(img), 'mosaic'): break
+    else:
+        FACE_HITS.append(('mosaic', 1)); _hero_text(img, words, x0, w, [], 'mosaic')
+    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(hero[0]) + 40, 36))
     return img
 
 def style_polaroid(srcs, words, badge_text):
@@ -432,21 +515,13 @@ def style_polaroid(srcs, words, badge_text):
         shd = Image.new('RGBA', card.size, (0, 0, 0, 0)); shd.putalpha(card.getchannel('A').point(lambda v: int(v * 0.5)))
         x, y = int(TW * cx - card.width / 2), int(TH * 0.12)
         img.alpha_composite(shd.filter(ImageFilter.GaussianBlur(8)), (x + 8, y + 12)); img.alpha_composite(card, (x, y))
-    _title_block(img, words, TH * 0.72, size=130)
+    _title_block(img, words, TH * 0.72, size=130, style='polaroid')
     if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (40, 36))
     return img
 
 def style_mosaic_r(srcs, words, badge_text):
     """Mirror of mosaic: two stacked panels left, big hero right, title on the hero."""
-    img = Image.new('RGBA', (TW, TH), (255, 255, 255, 255)); L = TW * 0.38
-    _panel(img, srcs[0], (L, 0, TW, TH), 6); _panel(img, srcs[1], (0, 0, L, TH / 2), 6); _panel(img, srcs[2], (0, TH / 2, L, TH), 6)
-    vg = Image.new('L', (TW, TH), 0); ImageDraw.Draw(vg).rectangle((int(L), int(TH * 0.5), TW, TH), fill=255)
-    sh = Image.new('RGBA', (TW, TH), (0, 0, 0, 0)); sh.putalpha(vg.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.75))); img.alpha_composite(sh)
-    d = ImageDraw.Draw(img); x0 = int(L + 48); w = TW - L
-    f1 = fit_font(d, words[0], condensed, w * 0.85, 200); text_stroke(d, (x0, TH - 150 - f1.size * 1.6), words[0], f1, sw=9)
-    if len(words) > 1: second_line(d, x0, TH - 110 - f1.size * 0.6, words[1].upper(), fit_font(d, words[1].upper(), condensed, w * 0.8, 100))
-    if badge_text and 'flag_badge' in ACC: badge(img, badge_text, (int(L) + 30, 36))
-    return img
+    return style_mosaic(srcs, words, badge_text, mirror=True)
 
 
 # ------------------------------------------------------------------ 2026 trend styles
@@ -535,6 +610,7 @@ def make(nums=None):
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
     for f in glob.glob(os.path.join(DELIVER, 'thumb_*.jpg')): os.remove(f)
+    FACE_HITS.clear()
     faces = [n for n in PCFG.get('face_frames', CFG.get('thumbnail_face_frames', [])) if n in nums]   # frames showing the creator
     scen = [n for n in nums if n not in faces]
     fr = [big[n].resize((TW, TH), Image.LANCZOS) for n in scen]
@@ -568,6 +644,7 @@ def make(nums=None):
         S.paste(im, ((k % 2) * 640, (k // 2) * 360))
     S.save(os.path.join(DELIVER, 'all_thumbnails.jpg'), quality=85)
     print(f'{len(outs)} thumbnails → {os.path.relpath(DELIVER, P())}/  (overview: all_thumbnails.jpg)')
+    if FACE_HITS: print('WARNING: text could not avoid a face in: ' + ', '.join(f'{s}' for s, _ in FACE_HITS) + ' — check them')
 
 def add_frames(specs):
     """Add hand-picked frames as candidates: thumbnails.py add CLIP@SECONDS ..."""
