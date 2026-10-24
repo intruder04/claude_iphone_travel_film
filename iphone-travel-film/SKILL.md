@@ -114,6 +114,12 @@ Read `review/intent_*.jpg`. For every clip write one entry (more if a clip holds
 - **win** is the moment: the seconds where the point of the clip happens. A railway crossing is worthless
   without the train, so the window must contain the train passing (`meta/shots` events help find it).
 - **q**: 3 highlight, 2 good, 1 filler (not used), 0 drop (pocket shots, filmed screens, blur, hotel rooms).
+- **One clip, several moments:** a long clip often holds more than one thing worth showing (the walk up an alley
+  and the shrine at its end; a robot in its cage and the robot rising). Write one intent per moment, each with
+  its own subject and window, instead of one long window or only the "best" part. The dull stretch between
+  them is cut. Read long clips at 1–2 s intervals (`sheets.py grid`) so no moment is missed.
+- **Talking shots are tightened automatically:** silences over 1.6 s between sentences are cut out (jump cuts),
+  unless something happens on screen during the pause. Set `"keep_pauses": true` when a pause matters.
 - Clips where the filmmaker talks to the camera, explains or reacts are often the soul of a travel film: give
   them q ≥ 2 and a window that holds whole sentences (they get subtitles).
 - Use the text Vision read (shop signs, station names) and the speech to name things correctly, e.g. a

@@ -30,6 +30,12 @@ Cutting rules (all measured, nothing guessed):
     when the film is split): locations.json "teaser": {"1": ["IMG_….MOV", ...]} lists the clips (taken from their
     windows in this edit, ~3 s each); without a list the highest-rated, most aesthetic highlights are picked, one per place
   * project.json "end_card": true makes sure the last shot of the film / each part is long enough (≥ 7 s) for the card
+  * one clip can hold several moments: write one intent per moment (different subjects, their own windows); the
+    dull stretch between them is simply left out (e.g. the walk up an alley, then the shrine at its end)
+  * talking shots are tightened (project.json "speech_tighten", default on): a silence longer than
+    "speech_pause_cut" (1.6 s) between sentences is cut out, leaving ~0.4 s on each side, so the shot becomes
+    several jump-cut pieces. A pause is kept when something happens in the picture (meta/shots events), and
+    shots with "keep_pauses": true on the intent are never tightened
 Order: segments in locations.json order; inside a segment, capture time (or the "after" clip's).
 The target length in project.json is a guide only — the plan reports it, it never pads or cuts to hit it.
 Output: meta/edl.json, EDIT_LIST.md"""
@@ -99,6 +105,31 @@ def clamp_speed(f, speed, has_speech):
         return round(max(speed, lo), 2)
     return float(speed)
 
+PAUSE_CUT, PAUSE_PAD = float(CFG.get('speech_pause_cut', 1.6)), 0.4
+
+def tighten(f, ss, dd, words):
+    """Cut long silences out of a talking shot: returns [(start, dur), ...] pieces in clip time."""
+    a, b = ss, ss + dd
+    ws = [w for w in words if w[0] >= a - 0.05 and w[1] <= b + 0.1]
+    if len(ws) < 2: return [(ss, dd)]
+    sh = shots(f) or {}
+    def busy(x, y):                                         # something happens on screen during the pause: keep it
+        return any(e[0] < y and e[1] > x for e in sh.get('events', []))
+    keep, cur = [], [a, ws[0][1]]
+    for w0, w1 in zip(ws[:-1], ws[1:]):
+        gap0, gap1 = w0[1], w1[0]
+        if gap1 - gap0 > PAUSE_CUT and not busy(gap0, gap1):
+            cur[1] = gap0 + PAUSE_PAD; keep.append(cur); cur = [gap1 - PAUSE_PAD, w1[1]]
+        else:
+            cur[1] = w1[1]
+    cur[1] = b; keep.append(cur)
+    out = []
+    for x, y in keep:                                       # pieces shorter than MIN_LEN grow into the cut silence
+        if y - x < MIN_LEN: x, y = max(a, x - (MIN_LEN - (y - x)) / 2), min(b, y + (MIN_LEN - (y - x)) / 2)
+        if out and x <= out[-1][1] + 0.05: out[-1][1] = max(out[-1][1], y)
+        else: out.append([x, y])
+    return [(round(x, 2), round(y - x, 2)) for x, y in out]
+
 def refine(f, win, q, dur, has_speech, words, max_shot=None, segs=(), speed=1.0):
     a, b = max(0.0, win[0]), min(dur - 0.1, win[1])
     cap = SPEECH_MAX if has_speech else MAXLEN.get(q, 7.0)
@@ -158,6 +189,8 @@ def add_teasers(edl, part_of, chosen):
 def main():
     L = jload('locations.json'); I = jload('intents.json'); IDX = {r['file']: r for r in jload('meta/index.json')}
     SP = jload('meta/speech.json', {}); dual = set(L.get('dual_selfie', []))
+    global SUBS
+    SUBS = jload('subtitles.json', {}) if CFG.get('subtitles', False) and os.path.exists(P('subtitles.json')) else None
     segs = L['segments']; order = {s['id']: k for k, s in enumerate(segs)}
     # 1) best clip per subject
     by_subject = {}
@@ -182,9 +215,17 @@ def main():
             ss, dd = refine(o['file'], w, o['q'], r['dur'], has_speech, words, segs[order[seg]].get('max_shot'), segs_, speed)
         dd = round(dd / speed, 2)                           # timeline length (source window / speed)
         if dd < MIN_LEN: continue
-        edl.append(dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
-                        hdr=r['hdr'], tag='screen' if r.get('screen') else ('dual-selfie' if o['file'] in dual else ''), note=o.get('note', ''),
-                        exact=bool(o.get('exact')), speed=speed, order=(IDX[o['after']]['time'], 1) if o.get('after') in IDX else (r['time'], 0)))
+        base = dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
+                    hdr=r['hdr'], tag='screen' if r.get('screen') else ('dual-selfie' if o['file'] in dual else ''), note=o.get('note', ''),
+                    exact=bool(o.get('exact')), speed=speed, order=(IDX[o['after']]['time'], 1) if o.get('after') in IDX else (r['time'], 0))
+        # only speech worth subtitling (the reviewed subtitles.json: filmmaker, companions, a guide) is tightened;
+        # strangers, announcements and mumbles must never cut a visual shot apart
+        talk = [w for w in SP.get(o['file'], {}).get('words', []) if any(c['start'] - 0.3 <= w[0] <= c['end'] + 0.3 for c in SUBS.get(o['file'], []))] \
+            if SUBS is not None else SP.get(o['file'], {}).get('words', [])
+        pieces = tighten(o['file'], ss, dd, talk) if speed == 1.0 and talk and not o.get('keep_pauses') \
+            and CFG.get('speech_tighten', True) else [(ss, dd)]
+        for k, (a, d) in enumerate(pieces):
+            edl.append(dict(base, ss=a, dur=d, subject=subj if len(pieces) == 1 else f'{subj}#{k + 1}', split=len(pieces) > 1))
     # 2b) look-alike pass: different subjects that still LOOK the same (CLIP similarity of the chosen windows) in
     #     the same segment — keep the better one. Repetition is what makes travel edits drag.
     def emb(e):
@@ -199,7 +240,7 @@ def main():
         for e in sh:
             v = emb(e)
             # highlights (q3) are only dropped when nearly identical to another highlight; good shots at `thr`
-            if v is not None and e['tag'] not in ('dual-selfie', 'screen') and not e.get('exact') and any(
+            if v is not None and e['tag'] not in ('dual-selfie', 'screen') and not e.get('exact') and not e.get('split') and any(
                     k[1] is not None and float(v @ k[1]) > (0.965 if e['q'] == 3 else thr) and k[0]['q'] >= e['q'] for k in keep):
                 dropped.append(e); continue
             keep.append((e, v))

@@ -37,6 +37,12 @@ travel edits drag: five takes of the same view become one.
 Shots where the filmmaker speaks keep whole sentences: with subtitles on, a cut inside a spoken sentence moves to
 its start or end (up to 6 s away), else the sentence is dropped. Such shots may run up to `speech_max` (25 s).
 
+## Tightening and splitting
+- A silence longer than 1.6 s inside a talking shot is cut out (0.4 s kept on each side). Pauses where something
+  happens in the picture are kept, so a reveal or a roar is never cut.
+- A clip with several important moments becomes several shots, one intent per moment. Never keep only one moment
+  of a clip because it is long.
+
 ## Screen recordings
 Used only next to the camera clip they explain (`"after"` on the intent), and only the seconds that make the
 point. Vertical recordings sit on a blurred fill like any vertical clip.
