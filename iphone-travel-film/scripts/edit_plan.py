@@ -36,6 +36,8 @@ Cutting rules (all measured, nothing guessed):
     "speech_pause_cut" (1.6 s) between sentences is cut out, leaving ~0.4 s on each side, so the shot becomes
     several jump-cut pieces. A pause is kept when something happens in the picture (meta/shots events), and
     shots with "keep_pauses": true on the intent are never tightened
+  * static shots (camera still, nothing moving in the picture, no speech) are capped at project.json "static_max"
+    (6 s), keeping their best-looking seconds: a long look at a building that doesn't move drags
 Order: segments in locations.json order; inside a segment, capture time (or the "after" clip's).
 The target length in project.json is a guide only — the plan reports it, it never pads or cuts to hit it.
 Output: meta/edl.json, EDIT_LIST.md"""
@@ -105,6 +107,8 @@ def clamp_speed(f, speed, has_speech):
         return round(max(speed, lo), 2)
     return float(speed)
 
+STATIC_MAX, STATIC_SPEED = float(CFG.get('static_max', 6.0)), 3.0
+STATIC_TRIGGER = float(CFG.get('static_trigger', 8.0))   # only shots longer than this are trimmed   # camera speed in % of frame width per second
 PAUSE_CUT, PAUSE_PAD = float(CFG.get('speech_pause_cut', 1.6)), 0.4
 
 def tighten(f, ss, dd, words):
@@ -217,7 +221,7 @@ def main():
         if dd < MIN_LEN: continue
         base = dict(file=o['file'], ss=ss, dur=dd, seg=seg, subject=subj, q=o['q'], time=r['time'], portrait=r['portrait'],
                     hdr=r['hdr'], tag='screen' if r.get('screen') else ('dual-selfie' if o['file'] in dual else ''), note=o.get('note', ''),
-                    exact=bool(o.get('exact')), speed=speed, order=(IDX[o['after']]['time'], 1) if o.get('after') in IDX else (r['time'], 0))
+                    exact=bool(o.get('exact')), speed=speed, placed=bool(o.get('after')), order=(IDX[o['after']]['time'], 1) if o.get('after') in IDX else (r['time'], 0))
         # only speech worth subtitling (the reviewed subtitles.json: filmmaker, companions, a guide) is tightened;
         # strangers, announcements and mumbles must never cut a visual shot apart
         talk = [w for w in SP.get(o['file'], {}).get('words', []) if any(c['start'] - 0.3 <= w[0] <= c['end'] + 0.3 for c in SUBS.get(o['file'], []))] \
@@ -240,12 +244,36 @@ def main():
         for e in sh:
             v = emb(e)
             # highlights (q3) are only dropped when nearly identical to another highlight; good shots at `thr`
-            if v is not None and e['tag'] not in ('dual-selfie', 'screen') and not e.get('exact') and not e.get('split') and any(
+            if v is not None and e['tag'] not in ('dual-selfie', 'screen') and not e.get('exact') and not e.get('split') \
+                    and not e.get('placed') and any(
                     k[1] is not None and float(v @ k[1]) > (0.965 if e['q'] == 3 else thr) and k[0]['q'] >= e['q'] for k in keep):
                 dropped.append(e); continue
             keep.append((e, v))
     edl = [e for e in edl if e not in dropped]
     if dropped: print(f'look-alike pass removed {len(dropped)} shots: ' + ', '.join(f"{e['file'][:-4]}({e['subject']})" for e in dropped[:12]) + (' …' if len(dropped) > 12 else ''))
+    # 2c) static shots: still camera, no in-frame motion, no speech → at most STATIC_MAX seconds
+    trimmed = []
+    for e in edl:
+        if e['dur'] <= STATIC_TRIGGER or e.get('exact') or e.get('split') or e.get('speed', 1.0) != 1.0 \
+                or e['tag'] in ('screen', 'dual-selfie', 'aerial'):
+            continue
+        if any(e['ss'] - 0.3 <= w[0] <= e['ss'] + e['dur'] for w in SP.get(e['file'], {}).get('words', [])):
+            continue
+        sh = shots(e['file'])
+        if not sh or not sh.get('speed'): continue
+        a, b = int(e['ss'] * 10), int((e['ss'] + e['dur']) * 10)
+        sp, zm, rs = np.array(sh['speed'][a:b]), np.abs(np.array(sh['zoom'][a:b])), np.array(sh['resid'][a:b])
+        if not len(sp): continue
+        ev_time = sum(max(0.0, min(ev[1], e['ss'] + e['dur']) - max(ev[0], e['ss'])) for ev in sh.get('events', []))
+        moving_inside = float((rs > 0.03).mean()) > 0.25 or ev_time > max(1.5, 0.2 * e['dur'])   # brief blips don't count
+        if np.median(sp) < STATIC_SPEED and np.median(zm) < 2.0 and not moving_inside:
+            sc = per_second_score(e['file']); n_ = int(STATIC_MAX); best, bi = -1e9, int(e['ss'])
+            for s_ in range(int(e['ss']), int(e['ss'] + e['dur'] - n_) + 1):
+                v = float(np.mean(sc[s_:s_ + n_])) if sc is not None and s_ + n_ <= len(sc) else 0.0
+                if v > best: best, bi = v, s_
+            trimmed.append((e['file'], e['dur'])); e['ss'], e['dur'] = float(bi), STATIC_MAX
+    if trimmed: print(f'static-shot cap: {len(trimmed)} shots trimmed to {STATIC_MAX:g} s (' +
+                      ', '.join(f'{f[:-4]} {d:.0f}s' for f, d in trimmed[:10]) + (' …' if len(trimmed) > 10 else '') + ')')
     # 3) aerial windows (optional: only projects with plane-window / observation-deck / drone footage list them)
     for s in segs:
         for k, (f, a, b, note) in enumerate(s.get('aerial', s.get('plane', []))):

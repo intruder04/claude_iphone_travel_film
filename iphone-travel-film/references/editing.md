@@ -37,6 +37,10 @@ travel edits drag: five takes of the same view become one.
 Shots where the filmmaker speaks keep whole sentences: with subtitles on, a cut inside a spoken sentence moves to
 its start or end (up to 6 s away), else the sentence is dropped. Such shots may run up to `speech_max` (25 s).
 
+## Static shots
+A shot longer than 8 s (`static_trigger`) with a still camera, nothing moving in the picture and no speech is capped at 6 s (`static_max`), keeping
+its best-looking seconds. Shots with motion, speech, `exact` windows or speed changes are not affected.
+
 ## Tightening and splitting
 - A silence longer than 1.6 s inside a talking shot is cut out (0.4 s kept on each side). Pauses where something
   happens in the picture are kept, so a reveal or a roar is never cut.
@@ -44,7 +48,8 @@ its start or end (up to 6 s away), else the sentence is dropped. Such shots may 
   of a clip because it is long.
 
 ## Screen recordings
-Used only next to the camera clip they explain (`"after"` on the intent), and only the seconds that make the
+Used only next to the camera clip they explain (`"after"` on the intent; any clip with `"after"` is placed on
+purpose and never removed as a look-alike), and only the seconds that make the
 point. Vertical recordings sit on a blurred fill like any vertical clip.
 
 ## Aerial openings (optional)

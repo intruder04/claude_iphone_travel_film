@@ -13,17 +13,21 @@ Text comes from project.json, after the user picked from proposed options (never
   "thumbnail_variants": [["JAPAN", "Tokyo · Kamakura · Kyoto"], ["SUMMER", "IN JAPAN"]],   # [headline, line 2]
   "thumbnail_badge": "🇯🇵 Japan 2026",  "thumbnail_route": ["Tokyo", "Kamakura", "Kyoto"],
   "thumbnail_accents": ["flag_badge", "yellow_bar", "route_dots"]
+Split films (TRAVEL_FILM_PART=N): candidates come from that part only, output goes to renders/thumbnails/PartN/, and
+"thumbnail_parts": {"N": {"variants": [[...]], "badge": "...", "face_frames": [...]}} overrides the settings above.
 Every variant is rendered in every style → at least 10 thumbnails (more variants or frames are added if needed).
 Subject cut-outs use Apple Vision's foreground-instance mask ("lift subject") on the Neural Engine."""
 import glob, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageFont
-from common import CFG, P, jload, edl_shots, grab
+from common import CFG, P, jload, edl_shots, grab, PART
 
 TW, TH = 1280, 720
-OUT = P('previews', 'thumbnails'); os.makedirs(OUT, exist_ok=True)
-DELIVER = P('renders', 'thumbnails'); os.makedirs(DELIVER, exist_ok=True)   # finished thumbnails go next to the film
+SUB = f'Part{PART}' if PART else ''
+OUT = P('previews', 'thumbnails', SUB); os.makedirs(OUT, exist_ok=True)
+DELIVER = P('renders', 'thumbnails', SUB); os.makedirs(DELIVER, exist_ok=True)   # finished thumbnails go next to the film
+PCFG = CFG.get('thumbnail_parts', {}).get(str(PART), {}) if PART else {}      # per-part text, badge, face frames
 F = '/System/Library/Fonts/'
 
 def sf(size, weight='Black'):
@@ -124,7 +128,7 @@ def pick(n=16):
     L = jload('locations.json', {}); pip = set(L.get('dual_selfie', []))
     cands = []
     for i, e in enumerate(edl):
-        if e.get('tag') == 'dual-selfie' or e['file'] in pip or e.get('portrait'): continue      # picture-in-picture inset clutters thumbnails
+        if e.get('tag') in ('dual-selfie', 'teaser') or e['file'] in pip or e.get('portrait'): continue      # picture-in-picture inset clutters thumbnails
         fr = V.get(e['file'], [])
         for s in range(int(e['ss']) + 1, int(e['ss'] + e['dur']) - 1):
             if s >= len(fr) or fr[s].get('aes') is None or fr[s].get('util'): continue
@@ -143,7 +147,7 @@ def pick(n=16):
     for k, c in enumerate(chosen):
         im = grab(c[2], c[3], 960, 540).resize((480, 270)); d = ImageDraw.Draw(im)
         d.rectangle((0, 0, 60, 36), fill=0); d.text((8, 3), str(k), font=Fn, fill=(255, 220, 0)); S.paste(im, ((k % 4) * 480, (k // 4) * 270))
-    S.save(os.path.join(OUT, 'candidates.jpg'), quality=85); print(f'{len(chosen)} candidates → previews/thumbnails/candidates.jpg')
+    S.save(os.path.join(OUT, 'candidates.jpg'), quality=85); print(f'{len(chosen)} candidates → {os.path.relpath(OUT, P())}/candidates.jpg')
 
 # ------------------------------------------------------------------ helpers
 def grade(im, sat=1.22, con=1.12, bri=1.03):
@@ -518,8 +522,8 @@ def make(nums=None):
     Frame order (candidate numbers): 1st = hero scenery; the rest feed the collages (more = more variety)."""
     cands = json.load(open(os.path.join(OUT, 'candidates.json')))
     nums = nums or [c['n'] for c in cands[:6]]
-    variants = CFG.get('thumbnail_variants') or [CFG.get('thumbnail_text') or [CFG.get('output_name', 'MY TRIP').replace('_', ' ').upper()]]
-    btxt = CFG.get('thumbnail_badge', '')
+    variants = PCFG.get('variants') or CFG.get('thumbnail_variants') or [CFG.get('thumbnail_text') or [CFG.get('output_name', 'MY TRIP').replace('_', ' ').upper()]]
+    btxt = PCFG.get('badge', CFG.get('thumbnail_badge', ''))
     styles = CFG.get('thumbnail_styles') or ['cinematic', 'collage', 'grid4', 'split', 'strips', 'mosaic', 'polaroid', 'minimal', 'pop']
     if CFG.get('thumbnail_cutout', True) is False: styles = [s for s in styles if s != 'pop']
     big = {c['n']: grab(c['file'], c['t'], 3840, 2160) for c in cands if c['n'] in nums}
@@ -531,7 +535,7 @@ def make(nums=None):
         if os.path.getsize(p) > 2_000_000: im.convert('RGB').save(p, quality=82, optimize=True)
         outs.append(p)
     for f in glob.glob(os.path.join(DELIVER, 'thumb_*.jpg')): os.remove(f)
-    faces = [n for n in CFG.get('thumbnail_face_frames', []) if n in nums]   # frames showing the creator
+    faces = [n for n in PCFG.get('face_frames', CFG.get('thumbnail_face_frames', [])) if n in nums]   # frames showing the creator
     scen = [n for n in nums if n not in faces]
     fr = [big[n].resize((TW, TH), Image.LANCZOS) for n in scen]
     ffr = {n: face_centered(big[n].resize((TW, TH), Image.LANCZOS), 0.9) for n in faces}   # face stays in narrow panels
@@ -563,7 +567,7 @@ def make(nums=None):
         ImageDraw.Draw(im).text((10, 320), os.path.basename(p)[6:-4], font=Fn, fill=(255, 255, 0), stroke_width=3, stroke_fill=(0, 0, 0))
         S.paste(im, ((k % 2) * 640, (k // 2) * 360))
     S.save(os.path.join(DELIVER, 'all_thumbnails.jpg'), quality=85)
-    print(f'{len(outs)} thumbnails → renders/thumbnails/  (overview: all_thumbnails.jpg)')
+    print(f'{len(outs)} thumbnails → {os.path.relpath(DELIVER, P())}/  (overview: all_thumbnails.jpg)')
 
 def add_frames(specs):
     """Add hand-picked frames as candidates: thumbnails.py add CLIP@SECONDS ..."""
