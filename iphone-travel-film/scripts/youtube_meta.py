@@ -10,18 +10,29 @@ import datetime, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import CFG, P, jload, edl_shots, part_suffix, PART
 
+CH_MIN = 40.0     # a place shown this long gets its own chapter even without an on-screen title
+
 def chapters():
+    """Chapters from the edit: a cold-open teaser is 'Highlights'; after it, every stretch of one place that lasts
+    ≥ CH_MIN seconds (or carries an on-screen title) starts a chapter. Short in-between stretches stay inside the
+    previous chapter, so every minute of the film is covered and labels match what is on screen."""
     E, edl = edl_shots(); S = {s['id']: s for s in E['segments']}
-    t, prev, ch = 0.0, None, []
+    blocks = []                                                  # [start, dur, label, titled]
+    t = 0.0
     for e in edl:
-        s = S[e['seg']]
-        if e['seg'] != prev and s.get('title') and s.get('place'):
-            label = s['place'] if not s.get('new_city') or s['place'].lower().startswith(s.get('city', '').lower()) \
-                else f"{s.get('city')} — {s['place']}"
-            ch.append([t, label])
-        prev = e['seg']; t += e['dur']
+        s = S[e['seg']]; tz = e.get('tag') == 'teaser'
+        label = 'Highlights' if tz else s.get('place') or s['id']
+        if not tz and s.get('new_city') and s.get('city') and not label.lower().startswith(s['city'].lower()):
+            label = f"{s['city']} — {label}"
+        if blocks and blocks[-1][2].split(' — ')[-1] == label.split(' — ')[-1]: blocks[-1][1] += e['dur']
+        else: blocks.append([t, e['dur'], label, bool(s.get('title')) and not tz])
+        t += e['dur']
+    ch = []
+    for a, d, lab, titled in blocks:
+        if ch and ch[-1][1] == lab: continue
+        if not ch or titled or d >= CH_MIN or lab == 'Highlights': ch.append([a, lab])
     out = []
-    for i, (a, lab) in enumerate(ch):
+    for i, (a, lab) in enumerate(ch):                            # YouTube: each chapter ≥ 10 s
         nxt = ch[i + 1][0] if i + 1 < len(ch) else t
         if out and nxt - a < 10: continue
         out.append([a, lab])
